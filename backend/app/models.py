@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
@@ -48,7 +49,7 @@ class FinancialFact(Base):
     announcement_id: Mapped[int] = mapped_column(ForeignKey("codal_announcements.id", ondelete="CASCADE"), index=True)
     concept: Mapped[str] = mapped_column(String(128), index=True)
     period_end: Mapped[date] = mapped_column(Date, index=True)
-    value: Mapped[Numeric] = mapped_column(Numeric(28, 6))
+    value: Mapped[Decimal] = mapped_column(Numeric(28, 6))
     unit: Mapped[str] = mapped_column(String(32), default="IRR")
     currency: Mapped[str] = mapped_column(String(8), default="IRR")
     source_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -74,7 +75,7 @@ class MonthlySale(Base):
     period_year: Mapped[int] = mapped_column(Integer)
     period_month: Mapped[int] = mapped_column(Integer)
     product: Mapped[str] = mapped_column(String(128))
-    quantity: Mapped[Numeric | None] = mapped_column(Numeric(28, 6), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(28, 6), nullable=True)
     sales_amount: Mapped[Numeric | None] = mapped_column(Numeric(28, 6), nullable=True)
     unit: Mapped[str] = mapped_column(String(32), default="IRR")
     source_announcement_id: Mapped[int | None] = mapped_column(ForeignKey("codal_announcements.id"), nullable=True)
