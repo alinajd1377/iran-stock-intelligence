@@ -12,7 +12,7 @@ async def download_document(url: str, root: str | None = None) -> dict:
     content = response.content
     digest = sha256(content).hexdigest()
     suffix = Path(url.split("?")[0]).suffix.lower()
-    if not re.fullmatch(r"\\.[a-z0-9]{1,8}", suffix): suffix = ".bin"
+    if not re.fullmatch(r"\.[a-z0-9]{1,8}", suffix): suffix = ".bin"
     directory = Path(root or settings.raw_data_dir) / digest[:2]
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / f"{digest}{suffix}"
