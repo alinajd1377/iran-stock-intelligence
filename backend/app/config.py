@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://isi:isi_password@db:5432/iran_stock_intelligence"
     codal_base_url: str = "https://search.codal.ir"
     tsetmc_base_url: str = "https://cdn.tsetmc.com/api"
+    raw_data_dir: str = "/app/data/raw"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
