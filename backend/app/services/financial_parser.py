@@ -17,7 +17,7 @@ def _number(value: Any) -> float | None:
     if raw in {"", "-", "—", "None"}: return None
     negative = raw.startswith("(") and raw.endswith(")")
     raw = raw.strip("()")
-    raw = re.sub(r"[^0-9.\\-]", "", raw)
+    raw = re.sub(r"[^0-9.\-]", "", raw)
     try:
         result = float(raw)
         return -result if negative else result
@@ -50,7 +50,7 @@ def parse_pdf(path: str | Path) -> list[dict]:
             for line in page_text.splitlines():
                 for label, concept in LABELS.items():
                     if label in line:
-                        numbers = re.findall(r"\\(?-?[\\d,٬]+(?:\\.\\d+)?\\)?", line.replace(" ", ""))
+                        numbers = re.findall(r"\(?-?[\d,٬]+(?:\.\d+)?\)?", line.replace(" ", ""))
                         if numbers:
                             value = _number(numbers[-1])
                             if value is not None:
