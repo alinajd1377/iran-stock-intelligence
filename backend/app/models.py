@@ -21,7 +21,8 @@ class CodalAnnouncement(Base):
     report_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_audited: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)\n    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     versions: Mapped[list["DocumentVersion"]] = relationship(back_populates="announcement", cascade="all, delete-orphan")
 
 class DocumentVersion(Base):
