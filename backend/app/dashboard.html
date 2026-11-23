@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>هوشمندی بازار سرمایه ایران</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#172033;background:#f4f6fa}body{margin:0}header{background:#14233b;color:white;padding:22px 5vw}main{max-width:1100px;margin:24px auto;padding:0 16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.card{background:white;border:1px solid #e3e8f0;border-radius:12px;padding:18px;margin-bottom:16px}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:0 0 14px}button{background:#1c5d9b;color:white;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}button:disabled{opacity:.5}input{padding:9px;border:1px solid #ccd4e0;border-radius:7px;max-width:100%}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:right;padding:9px;border-bottom:1px solid #edf0f4}small,.muted{color:#68758a}.status{margin-top:10px;white-space:pre-wrap}.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}code{direction:ltr;display:inline-block}
+</style></head>
+<body><header><h1>سامانه هوشمندی بازار سرمایه ایران</h1><div>نسخه توسعه‌ای • نماد آغازین: ساروم</div></header>
+<main>
+<div class="grid">
+<section class="card"><h2>وضعیت سرویس</h2><div id="health">در حال بررسی...</div><p><a href="/docs">مستندات API</a></p></section>
+<section class="card"><h2>همگام‌سازی کدال</h2><div class="actions"><input id="ticker" value="ساروم" aria-label="نماد"><button id="sync">دریافت اطلاعیه‌ها</button></div><div id="syncStatus" class="status muted"></div></section>
+<section class="card"><h2>نسبت‌های بنیادی</h2><div id="ratios" class="muted">برای محاسبه نسبت‌ها باید داده مالی و ارزش بازار موجود باشد.</div></section>
+</div>
+<section class="card"><h2>اطلاعیه‌های ذخیره‌شده</h2><div class="actions"><button id="refresh">به‌روزرسانی فهرست</button></div><div id="announcements" class="muted">در حال دریافت...</div></section>
+<section class="card"><h2>بسته‌های اشتراک</h2><div id="plans">در حال دریافت...</div></section>
+<section class="card"><h2>محدودیت‌های نسخه فعلی</h2><p class="muted">این داشبورد نسخه عملیاتی سرمایه‌گذاری نیست. اتصال زنده و اعتبارسنجی کامل کدال و TSETMC، استخراج اختصاصی تمام قالب‌ها، قیمت‌گذاری و پرداخت اشتراک، مدل‌های پیش‌بینی آماری و سنجش ریسک سبد هنوز نیازمند توسعه و آزمون مستقل هستند. نسبت‌ها تنها در صورت وجود داده معتبر نمایش داده می‌شوند.</p></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+async function get(url){const r=await fetch(url);if(!r.ok)throw new Error(await r.text());return r.json()}
+function table(rows,cols){if(!rows.length)return '<p class="muted">هنوز داده‌ای ثبت نشده است.</p>';const t=document.createElement('table');const h=document.createElement('tr');cols.forEach(c=>{const e=document.createElement('th');e.textContent=c[1];h.append(e)});t.append(h);rows.forEach(row=>{const tr=document.createElement('tr');cols.forEach(c=>{const td=document.createElement('td');td.textContent=row[c[0]]??'—';tr.append(td)});t.append(tr)});return t}
+async function refresh(){try{const rows=await get('/api/v1/announcements?symbol='+encodeURIComponent($('ticker').value));$('announcements').replaceChildren(table(rows,[['tracing_no','شناسه کدال'],['title','عنوان'],['publish_at','زمان انتشار'],['period_end','پایان دوره']]));const ratios=await get('/api/v1/analytics/'+encodeURIComponent($('ticker').value)+'/ratios');$('ratios').textContent='P/E: '+(ratios.pe??'—')+' | P/B: '+(ratios.pb??'—')+' | P/S: '+(ratios.ps??'—');}catch(e){$('announcements').textContent=e.message}}
+$('refresh').onclick=refresh;
+$('sync').onclick=async()=>{const b=$('sync');b.disabled=true;$('syncStatus').textContent='در حال ارتباط با کدال...';try{$('syncStatus').textContent=JSON.stringify(await get('/health'));const r=await fetch('/api/v1/sync/codal/'+encodeURIComponent($('ticker').value),{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(JSON.stringify(d));$('syncStatus').textContent=JSON.stringify(d,null,2);await refresh()}catch(e){$('syncStatus').textContent=e.message}finally{b.disabled=false}};
+(async()=>{try{$('health').textContent=JSON.stringify(await get('/health/db'));$('plans').replaceChildren(table(await get('/api/v1/subscription-plans'),[['name','پلن'],['durations_months','مدت‌ها (ماه)'],['features','امکانات']]))}catch(e){$('health').textContent=e.message}await refresh()})();
+</script></body></html>
