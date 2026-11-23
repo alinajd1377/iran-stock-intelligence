@@ -1,0 +1,195 @@
+{
+  "symbol": "ساروم",
+  "company": "سیمان ارومیه",
+  "industry": "سیمان، آهک و گچ",
+  "fiscal_year_end": "1405/12/29",
+  "data_cutoff": "1405/09/02",
+  "latest_audited_interim_period": "1405/06/31",
+  "latest_audited_publish_date": "1405/08/30",
+  "last_verified_monthly_period": "1405/07/30",
+  "last_verified_monthly_publish_date": "1405/08/06",
+  "currency": "IRR",
+  "unit": "million_IRR",
+  "financials_6m_1405_audited": {
+    "period_end": "1405/06/31",
+    "publish_date": "1405/08/30",
+    "tracing_no": "1636862",
+    "revenue": 40223054,
+    "gross_profit": 26624163,
+    "operating_profit": 27058350,
+    "net_income": 27821464,
+    "eps_irr_per_share": 27821,
+    "revenue_growth_pct_yoy": 76.65,
+    "gross_profit_growth_pct_yoy": 76.9,
+    "operating_profit_growth_pct_yoy": 89.8,
+    "net_income_growth_pct_yoy": 108.7,
+    "operating_margin_pct": 67.27,
+    "net_margin_pct": 69.17,
+    "equity": 31933277,
+    "equity_growth_pct_yoy": -2,
+    "debt_ratio_pct": 43.14,
+    "prior_debt_ratio_pct": 29.74,
+    "current_ratio": 2.07,
+    "prior_current_ratio": 2.85,
+    "total_assets_growth_pct_yoy": 22,
+    "total_liabilities_growth_pct_yoy": 76
+  },
+  "financials_6m_1405_unaudited": {
+    "period_end": "1405/06/31",
+    "publish_date": "1405/07/30",
+    "tracing_no": "1611749",
+    "revenue": 40223054,
+    "gross_profit": 26624163,
+    "operating_profit": 25539925,
+    "net_income": 24728075,
+    "eps_irr_per_share": 24798,
+    "status": "superseded_for_latest_analysis_by_audited_filing"
+  },
+  "monthly_sales_1405": {
+    "period": "1405/07/30",
+    "publish_date": "1405/08/06",
+    "month_sales": 9311027,
+    "month_sales_yoy_growth_pct": 136.63,
+    "month_sales_mom_growth_pct": 8.09,
+    "cumulative_months": 7,
+    "cumulative_sales": 49534081,
+    "cumulative_yoy_growth_pct": 85.48,
+    "registered_capital_million_irr": 1000000
+  },
+  "six_month_product_revenue": [
+    {
+      "product": "سیمان پاکتی PLC",
+      "sales_amount": 1974185,
+      "market": "طبقه‌بندی کانال در منبع خلاصه مشخص نیست"
+    },
+    {
+      "product": "سیمان فله تیپ یک",
+      "sales_amount": 7142302,
+      "market": "داخلی/نامشخص"
+    },
+    {
+      "product": "سیمان پاکتی تیپ دو",
+      "sales_amount": 1781197,
+      "market": "داخلی/نامشخص"
+    },
+    {
+      "product": "سیمان فله تیپ دو",
+      "sales_amount": 5874954,
+      "market": "داخلی/نامشخص"
+    },
+    {
+      "product": "سیمان پاکتی تیپ یک",
+      "sales_amount": 12307397,
+      "market": "داخلی/نامشخص"
+    },
+    {
+      "product": "سیمان فله تیپ یک صادراتی",
+      "sales_amount": 225026,
+      "market": "صادراتی"
+    },
+    {
+      "product": "سیمان پاکتی تیپ یک صادراتی",
+      "sales_amount": 8165074,
+      "market": "صادراتی"
+    },
+    {
+      "product": "کلینکر صادراتی",
+      "sales_amount": 2498994,
+      "market": "صادراتی"
+    },
+    {
+      "product": "سیمان فله جامبوبگ تیپ یک صادراتی",
+      "sales_amount": 253925,
+      "market": "صادراتی"
+    }
+  ],
+  "sales_channels_6m": {
+    "domestic_sales": 29080035,
+    "export_sales": 11143019,
+    "total_sales": 40223054,
+    "export_share_pct": 27.7
+  },
+  "material_events": [
+    {
+      "date": "1405/08/05",
+      "type": "financial_explanation",
+      "tracing_no": "1621262",
+      "summary": "نامه توضیحی شرکت درباره تغییر سود عملیاتی دوره شش‌ماهه."
+    },
+    {
+      "date": "1405/08/25",
+      "type": "tender",
+      "summary": "افشای عدم حصول نتیجه از برگزاری مناقصه گروه ب؛ اطلاعیه‌های اصلاحی مرتبط در 1405/08/26 منتشر شده‌اند."
+    }
+  ],
+  "analysis": {
+    "positives": [
+      "رشد حدود ۷۷ درصدی درآمد عملیاتی شش‌ماهه نسبت به دوره مشابه.",
+      "رشد حدود ۱۰۹ درصدی سود خالص حسابرسی‌شده نسبت به دوره مشابه.",
+      "حاشیه سود عملیاتی ۶۷٫۲۷٪ و حاشیه سود خالص ۶۹٫۱۷٪ در خلاصه صورت مالی.",
+      "فروش تجمعی هفت‌ماهه ۸۵٫۴۸٪ بیشتر از دوره مشابه."
+    ],
+    "risks": [
+      "نسبت بدهی از ۲۹٫۷۴٪ به ۴۳٫۱۴٪ افزایش یافته است.",
+      "نسبت جاری از ۲٫۸۵ به ۲٫۰۷ کاهش یافته است.",
+      "حقوق مالکانه حدود ۲٪ کمتر از دوره مشابه گزارش شده است.",
+      "سود خالص از سود عملیاتی بیشتر است؛ پایداری سایر درآمدها و اقلام غیرعملیاتی باید از فایل کامل بررسی شود.",
+      "اثر مالی اطلاعیه‌های مناقصه آبان باید از متن کامل اطلاعیه‌ها ارزیابی شود."
+    ],
+    "valuation_status": "به دلیل نبود snapshot قیمت و تعداد سهام هم‌زمان و قابل استناد، P/E، P/S و ارزش بازار در این پرونده محاسبه نشده‌اند.",
+    "forecast_status": "از داده‌های خلاصه، پیش‌بینی سود یا قیمت هدف ساخته نشده است."
+  },
+  "sources": [
+    {
+      "name": "Codal - audited 6M filing",
+      "tracing_no": "1636862",
+      "url": "https://www.codal.ir/"
+    },
+    {
+      "name": "Codal - unaudited 6M filing",
+      "tracing_no": "1611749",
+      "url": "https://www.codal.ir/"
+    },
+    {
+      "name": "Codal - explanation letter",
+      "tracing_no": "1621262",
+      "url": "https://www.codal.ir/"
+    },
+    {
+      "name": "Codal360 - Sarom filing feed",
+      "url": "https://telegram.me/s/Codal360_ir?q=%23%D8%B3%D8%A7%D8%B1%D9%88%D9%85"
+    },
+    {
+      "name": "NoavaranCodal - filing summary",
+      "url": "https://t.me/s/NoavaranCodal?q=%23%D8%B3%D8%A7%D8%B1%D9%88%D9%85"
+    },
+    {
+      "name": "Fundai - product revenue history",
+      "url": "https://fundai.ir/company/sarum/report/operation-income"
+    },
+    {
+      "name": "Fundai - balance sheet history",
+      "url": "https://fundai.ir/company/sarum/report/balance-sheet"
+    },
+    {
+      "name": "Tindex - market and filing overview",
+      "url": "https://tindex.app/stocks/%D8%B3%D8%A7%D8%B1%D9%88%D9%85/"
+    }
+  ],
+  "data_quality": {
+    "primary_source_priority": "Codal",
+    "third_party_aggregations": [
+      "ریز فروش محصولی",
+      "خلاصه برخی نسبت‌ها و رشدهای ترازنامه"
+    ],
+    "not_loaded": [
+      "فایل خام همه اطلاعیه‌های کدال",
+      "مقدار و نرخ فروش ماهانه هر محصول",
+      "گزارش ماهانه پس از مهر ۱۴۰۵",
+      "صورت‌های مالی فصلی مستقل و تفاضل دوره‌های تجمعی",
+      "تاریخچه قیمت و ارزش بازار",
+      "مقایسه کامل شرکت‌های هم‌گروه"
+    ],
+    "warning": "این snapshot پژوهشی بر اساس اطلاعیه‌های عمومی و خلاصه‌های تجمیعی است و جایگزین واکشی و تطبیق مستقیم فایل اصلی کدال نیست."
+  }
+}
