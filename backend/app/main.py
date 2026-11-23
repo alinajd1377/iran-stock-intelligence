@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
@@ -61,6 +62,10 @@ class ScenarioIn(BaseModel):
     base_value: float
     annual_growth: float = Field(gt=-1)
     periods: int = Field(default=3, ge=1, le=10)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    return (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 
 @app.get("/")
 def root():
@@ -229,10 +234,10 @@ def create_projection(payload: ScenarioIn, db: Session = Depends(get_db)):
 @app.get("/api/v1/subscription-plans")
 def subscription_plans():
     return [
-        {"code": "fundamental", "name": "Fundamental", "features": ["صورت‌های مالی", "نسبت‌های بنیادی"]},
-        {"code": "fundamental_plus", "name": "Fundamental Plus", "features": ["همه امکانات Fundamental", "گزارش‌های ماهانه و صنعت"]},
-        {"code": "fundamental_pro", "name": "Fundamental Pro", "features": ["همه امکانات Plus", "سناریوهای پیش‌بینی و داده‌های پیشرفته"]},
-        {"code": "portfolio_intelligence", "name": "Portfolio Intelligence", "features": ["تحلیل سبد", "تمرکز و پایش ریسک"]},
+        {"code": "fundamental", "name": "Fundamental", "durations_months": [3, 6, 12], "features": ["صورت‌های مالی", "نسبت‌های بنیادی"]},
+        {"code": "fundamental_plus", "name": "Fundamental Plus", "durations_months": [3, 6, 12], "features": ["همه امکانات Fundamental", "گزارش‌های ماهانه و صنعت"]},
+        {"code": "fundamental_pro", "name": "Fundamental Pro", "durations_months": [3, 6, 12], "features": ["همه امکانات Plus", "سناریوهای پیش‌بینی و داده‌های پیشرفته"]},
+        {"code": "portfolio_intelligence", "name": "Portfolio Intelligence", "durations_months": [3, 6, 12], "features": ["تحلیل سبد", "تمرکز و پایش ریسک"]},
     ]
 
 @app.get("/api/v1/tsetmc/search")
