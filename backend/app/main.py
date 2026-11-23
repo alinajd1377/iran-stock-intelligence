@@ -84,6 +84,17 @@ def database_health(db: Session = Depends(get_db)):
 def list_symbols(db: Session = Depends(get_db)):
     return db.scalars(select(models.Symbol).order_by(models.Symbol.ticker)).all()
 
+@app.get("/api/v1/research/sarom")
+def sarom_research():
+    """Return the curated source-linked Sarom research snapshot."""
+    import json
+    path = Path(__file__).parent / "data" / "sarom_snapshot.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(500, f"Sarom research data unavailable: {exc}") from exc
+
+
 @app.get("/api/v1/announcements")
 def list_announcements(symbol: str = Query(default="ساروم"), limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
     stmt = select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker == symbol).order_by(models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)
