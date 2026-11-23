@@ -102,3 +102,8 @@ docker compose exec api alembic upgrade head
 - داده‌ای که تاریخ انتشار معتبر ندارد نباید در محاسبات تاریخی point-in-time استفاده شود.
 
 این نرم‌افزار ابزار پژوهش است، نه توصیه سرمایه‌گذاری و نه تضمین صحت یا کامل‌بودن داده.
+
+
+## Sarom research data
+
+Curated research snapshot: `backend/app/data/sarom_snapshot.json`. The dataset is source-linked, distinguishes audited and unaudited six-month filings, includes the Mehr 1405 monthly sales headline and product revenue summary, and documents data gaps. It is not a substitute for downloading and validating the original Codal files.
