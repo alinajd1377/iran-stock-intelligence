@@ -8,7 +8,7 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs
 
 import httpx
 from sqlalchemy import select
@@ -110,6 +110,7 @@ def metadata(row, symbol):
     except ValueError:
         published = None
     links = []
+    serial = pick(row, "LetterSerial", "letterSerial", "letter_serial")
     for key in ("Url", "PdfUrl", "ExcelUrl", "HtmlUrl", "AttachmentUrl"):
         value = pick(row, key)
         if value:
@@ -122,9 +123,17 @@ def metadata(row, symbol):
                 value = urljoin("https://www.codal.ir/", value)
             if value not in links:
                 links.append(value)
+            if not serial:
+                query = parse_qs(urlparse(value).query)
+                serial = next((values[0] for key, values in query.items() if key.lower() == "letterserial" and values), None)
+    if serial:
+        excel_url = f"https://excel.codal.ir/service/Excel/GetAll/{serial}/0"
+        if excel_url not in links:
+            links.append(excel_url)
     audited = pick(row, "IsAudited", "Audited")
     return {
         "tracing": str(tracing) if tracing else None,
+        "letter_serial": str(serial) if serial else None,
         "title": str(pick(row, "Title", "LetterCodeTitle") or "بدون عنوان"),
         "period_end": jalali_date(pick(row, "PeriodEndToDate", "PeriodEndDate")),
         "publish_at": published,
@@ -141,8 +150,14 @@ def save_file(client, url):
     digest = hashlib.sha256(data).hexdigest()
     content_type = response.headers.get("content-type", "").lower()
     suffix = Path(url.split("?")[0]).suffix.lower()
-    if suffix not in (".pdf", ".xlsx", ".xls", ".xlsm", ".html", ".htm"):
-        suffix = ".pdf" if "pdf" in content_type else ".xlsx" if ("excel" in content_type or "spreadsheet" in content_type) else ".html" if "html" in content_type else ".bin"
+    if data[:2] == b"PK":
+        suffix = ".xlsx"
+    elif data[:8] == bytes.fromhex("D0CF11E0A1B11AE1"):
+        suffix = ".xls"
+    elif data.lstrip().lower().startswith((b"<!doctype html", b"<html", b"<table")) or "text/html" in content_type:
+        suffix = ".html"
+    elif suffix not in (".pdf", ".xlsx", ".xls", ".xlsm", ".html", ".htm"):
+        suffix = ".pdf" if "pdf" in content_type else ".xlsx" if ("excel" in content_type or "spreadsheet" in content_type) else ".bin"
     folder = RAW / digest[:2]
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / (digest + suffix)
@@ -183,10 +198,21 @@ def extract_content_items(path):
                 super().__init__(); self.parts=[]
             def handle_data(self, data):
                 if data.strip(): self.parts.append(data.strip())
+        html = Path(path).read_text(encoding="utf-8", errors="replace")
         parser = TextCollector()
-        parser.feed(Path(path).read_text(encoding="utf-8", errors="replace"))
+        parser.feed(html)
         for i, value in enumerate(parser.parts, start=1):
             items.append((f"html:text:{i}", "text", value[:12000]))
+        try:
+            from app.services.codal_reports import parse_html_tables
+            for table_no, table in enumerate(parse_html_tables(html), start=1):
+                all_rows = [table.get("headers") or []] + (table.get("rows") or [])
+                for row_no, row in enumerate(all_rows, start=1):
+                    for col_no, value in enumerate(row, start=1):
+                        if value is not None and str(value).strip():
+                            items.append((f"table:{table_no}:r{row_no}:c{col_no}", "table_cell", str(value)[:12000]))
+        except Exception:
+            LOG.exception("HTML table extraction failed for %s", path)
     return items
 
 def archive_row(db, client, symbol, row):
@@ -200,13 +226,13 @@ def archive_row(db, client, symbol, row):
             tracing_no=meta["tracing"], symbol_ticker=symbol, title=meta["title"],
             publish_at=meta["publish_at"], period_end=meta["period_end"],
             report_type=meta["report_type"], is_audited=meta["is_audited"],
-            source_url=meta["links"][0] if meta["links"] else None, raw_payload=row,
+            source_url=meta["links"][0] if meta["links"] else None, raw_payload={**row, "LetterSerial": meta["letter_serial"]} if meta["letter_serial"] else row,
         )
         db.add(announcement)
         db.flush()
         created = 1
     else:
-        announcement.raw_payload = row
+        announcement.raw_payload = ({**row, "LetterSerial": meta["letter_serial"]} if meta["letter_serial"] else row)
         announcement.publish_at = meta["publish_at"] or announcement.publish_at
         announcement.period_end = meta["period_end"] or announcement.period_end
         announcement.report_type = meta["report_type"] or announcement.report_type
@@ -289,7 +315,7 @@ def sync_symbol(symbol, max_pages, backfill):
                         LOG.exception("Failed to archive row for %s", symbol)
             if not backfill:
                 break
-            time.sleep(1.2)
+            time.sleep(3.0)
     return totals
 
 def main():
