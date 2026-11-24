@@ -71,9 +71,12 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=2.0):
         sheet_ids=discover_sheets(response.text)
         total["sheets_found"]=len(sheet_ids)
         for idx,sheet_id in enumerate(sheet_ids):
-            if idx: time.sleep(delay_seconds)
             url=f"{decision}?LetterSerial={serial}&rt=0&let=6&ct=0&ft=-1&sheetId={sheet_id}"
-            page=client.get(url); page.raise_for_status()
+            if sheet_id == 1:
+                page=response
+            else:
+                time.sleep(delay_seconds)
+                page=client.get(url); page.raise_for_status()
             tables=parse_html_tables(page.text)
             digest=hashlib.sha256(page.content).hexdigest()
             sheet=db.scalar(select(models.CodalReportSheet).where(models.CodalReportSheet.announcement_id==announcement_id,models.CodalReportSheet.sheet_id==sheet_id))
