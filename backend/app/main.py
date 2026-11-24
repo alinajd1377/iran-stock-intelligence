@@ -84,6 +84,27 @@ def database_health(db: Session = Depends(get_db)):
 def list_symbols(db: Session = Depends(get_db)):
     return db.scalars(select(models.Symbol).order_by(models.Symbol.ticker)).all()
 
+
+class SymbolIn(BaseModel):
+    ticker: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=255)
+
+@app.post("/api/v1/symbols")
+def add_symbol(payload: SymbolIn, db: Session = Depends(get_db)):
+    existing = db.scalar(select(models.Symbol).where(models.Symbol.ticker == payload.ticker))
+    if existing:
+        raise HTTPException(409, "این نماد قبلاً ثبت شده است")
+    row = models.Symbol(**payload.model_dump())
+    db.add(row); db.commit(); db.refresh(row)
+    return row
+
+@app.get("/api/v1/codal/archive/items")
+def codal_archive_items(announcement_id: int, limit: int = Query(default=500, ge=1, le=5000), db: Session = Depends(get_db)):
+    rows = db.scalars(select(models.DocumentContentItem).join(models.DocumentVersion)
+        .where(models.DocumentVersion.announcement_id == announcement_id)
+        .order_by(models.DocumentContentItem.id).limit(limit)).all()
+    return [{"locator": x.locator, "kind": x.content_kind, "text": x.content_text} for x in rows]
+
 @app.get("/api/v1/research/sarom")
 def sarom_research():
     """Return the curated source-linked Sarom research snapshot."""
