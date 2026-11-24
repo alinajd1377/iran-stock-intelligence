@@ -150,6 +150,45 @@ def save_file(client, url):
         target.write_bytes(data)
     return {"path": str(target), "sha256": digest, "size": len(data), "content_type": content_type or None}
 
+
+def extract_content_items(path):
+    """Extract searchable source text/cells while preserving the original file."""
+    suffix = Path(path).suffix.lower()
+    items = []
+    if suffix in (".xlsx", ".xlsm"):
+        from openpyxl import load_workbook
+        book = load_workbook(path, read_only=True, data_only=True)
+        for sheet in book.worksheets:
+            for rno, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                for cno, value in enumerate(row, start=1):
+                    if value is not None and str(value).strip():
+                        items.append((f"{sheet.title}!R{rno}C{cno}", "cell", str(value)[:12000]))
+        book.close()
+    elif suffix == ".pdf":
+        import pdfplumber
+        with pdfplumber.open(path) as pdf:
+            for page_no, page in enumerate(pdf.pages, start=1):
+                content = page.extract_text() or ""
+                if content.strip():
+                    items.append((f"page:{page_no}", "page_text", content[:50000]))
+                for table_no, table in enumerate(page.extract_tables() or [], start=1):
+                    for row_no, row in enumerate(table, start=1):
+                        for col_no, value in enumerate(row or [], start=1):
+                            if value is not None and str(value).strip():
+                                items.append((f"page:{page_no}:table:{table_no}:r{row_no}:c{col_no}", "table_cell", str(value)[:12000]))
+    elif suffix in (".html", ".htm"):
+        from html.parser import HTMLParser
+        class TextCollector(HTMLParser):
+            def __init__(self):
+                super().__init__(); self.parts=[]
+            def handle_data(self, data):
+                if data.strip(): self.parts.append(data.strip())
+        parser = TextCollector()
+        parser.feed(Path(path).read_text(encoding="utf-8", errors="replace"))
+        for i, value in enumerate(parser.parts, start=1):
+            items.append((f"html:text:{i}", "text", value[:12000]))
+    return items
+
 def archive_row(db, client, symbol, row):
     meta = metadata(row, symbol)
     if not meta["tracing"]:
@@ -194,6 +233,12 @@ def archive_row(db, client, symbol, row):
             db.add(version)
             db.flush()
             files += 1
+            try:
+                for locator, kind, value in extract_content_items(stored["path"]):
+                    db.add(models.DocumentContentItem(document_version_id=version.id, locator=locator,
+                        content_kind=kind, content_text=value))
+            except Exception:
+                LOG.exception("Full-content extraction failed for %s", url)
             if meta["period_end"]:
                 try:
                     parsed = parse_document(stored["path"])
