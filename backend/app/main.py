@@ -386,3 +386,16 @@ def extract_codal_report(announcement_id: int, db: Session = Depends(get_db)):
 @app.get("/api/v1/admin/symbols")
 def admin_symbols(db: Session = Depends(get_db)):
     return db.scalars(select(models.Symbol).order_by(models.Symbol.ticker)).all()
+
+@app.post("/api/v1/codal/reports/extract-batch/{symbol}")
+def extract_codal_report_batch(symbol: str, limit: int = Query(default=50, ge=1, le=200), only_missing: bool = True, db: Session = Depends(get_db)):
+    from .services.codal_reports import extract_announcement
+    stmt=select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker==symbol).order_by(models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)
+    announcements=db.scalars(stmt).all(); results=[]
+    for item in announcements:
+        if only_missing and db.scalar(select(models.CodalReportSheet.id).where(models.CodalReportSheet.announcement_id==item.id).limit(1)):
+            continue
+        try: results.append({"announcement_id":item.id,"title":item.title,**extract_announcement(db,item.id)})
+        except Exception as exc:
+            db.rollback(); results.append({"announcement_id":item.id,"title":item.title,"error":f"{type(exc).__name__}: {exc}"})
+    return {"symbol":symbol,"checked":len(announcements),"processed":len(results),"results":results}
