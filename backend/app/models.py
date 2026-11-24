@@ -120,3 +120,27 @@ class ForecastScenario(Base):
     annual_growth: Mapped[Decimal] = mapped_column(Numeric(12, 8))
     periods: Mapped[int] = mapped_column(Integer, default=3)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DailyFxRate(Base):
+    __tablename__ = "daily_fx_rates"
+    __table_args__ = (UniqueConstraint("rate_date", "currency_pair", "source"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rate_date: Mapped[date] = mapped_column(Date, index=True)
+    currency_pair: Mapped[str] = mapped_column(String(16), default="USD/IRR")
+    rate: Mapped[Decimal] = mapped_column(Numeric(24, 4))
+    unit: Mapped[str] = mapped_column(String(16), default="IRR per USD")
+    source: Mapped[str] = mapped_column(String(64), default="manual")
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DocumentContentItem(Base):
+    """Lossless extracted text/table cells; raw source file remains the authority."""
+    __tablename__ = "document_content_items"
+    __table_args__ = (UniqueConstraint("document_version_id", "locator"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_version_id: Mapped[int] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
+    locator: Mapped[str] = mapped_column(String(255))
+    content_kind: Mapped[str] = mapped_column(String(32), default="text")
+    content_text: Mapped[str] = mapped_column(Text)
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
