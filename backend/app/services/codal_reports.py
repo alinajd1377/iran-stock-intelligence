@@ -77,7 +77,7 @@ def parse_html_tables(html):
         if rows: output.append({"caption":table["caption"],"headers":rows[0],"rows":rows[1:] if len(rows)>1 else [],"row_count":len(rows),"column_count":max(map(len,rows),default=0)})
     return output
 
-def extract_announcement(db, announcement_id, client=None, delay_seconds=2.0):
+def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
     announcement=db.get(models.CodalAnnouncement,announcement_id)
     if not announcement: raise ValueError("announcement not found")
     payload = announcement.raw_payload or {}
@@ -101,13 +101,15 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=2.0):
                 time.sleep(delay_seconds)
                 page=client.get(url); page.raise_for_status()
             tables=parse_html_tables(page.text)
-            if not tables:
-                workbook=client.get(f"{EXCEL_BASE}{serial}/0")
+            if not tables and sheet_id == 1:
+                workbook_url=f"{EXCEL_BASE}{serial}/0"
+                workbook=client.get(workbook_url)
                 if workbook.status_code == 200:
                     fallback_tables=parse_html_tables(workbook.text)
                     if fallback_tables:
                         tables=fallback_tables
                         page=workbook
+                        url=workbook_url
             digest=hashlib.sha256(page.content).hexdigest()
             sheet=db.scalar(select(models.CodalReportSheet).where(models.CodalReportSheet.announcement_id==announcement_id,models.CodalReportSheet.sheet_id==sheet_id))
             if sheet is None:
