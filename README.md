@@ -107,3 +107,35 @@ docker compose exec api alembic upgrade head
 ## Sarom research data
 
 Curated research snapshot: `backend/app/data/sarom_snapshot.json`. The dataset is source-linked, distinguishes audited and unaudited six-month filings, includes the Mehr 1405 monthly sales headline and product revenue summary, and documents data gaps. It is not a substitute for downloading and validating the original Codal files.
+
+
+## آرشیو خودکار و تاریخی کدال
+
+سرویس مستقل `codal-archive` در کنار API اجرا می‌شود. این سرویس به‌صورت پیش‌فرض هر ساعت چند صفحه آخر اطلاعیه‌های نمادهای تعیین‌شده را بررسی می‌کند، اطلاعیه‌ها را با `tracing_no` یکتا ثبت می‌کند، نسخه فایل‌ها را با SHA-256 نگه می‌دارد و برای فایل‌های قابل‌خواندن، استخراج محدود facts را اجرا می‌کند. فایل خام در `data/raw/codal` باقی می‌ماند تا با ارتقای parser دوباره پردازش شود.
+
+تنظیمات قابل افزودن به فایل `.env`:
+```dotenv
+CODAL_SYMBOLS=ساروم
+CODAL_POLL_INTERVAL_SECONDS=3600
+CODAL_INCREMENTAL_PAGES=3
+CODAL_PAGE_SIZE=100
+```
+
+بعد از دریافت تغییرات و build، آرشیو تاریخی را یک بار اجرا کنید:
+```powershell
+docker compose stop codal-archive
+docker compose run --rm codal-archive python -m app.jobs.codal_archive --backfill --pages 1000
+docker compose up -d codal-archive
+```
+فرمان بالا از صفحه ۱ تا حداکثر ۱۰۰۰ جلو می‌رود؛ اگر کدال محدودیت یا خطا داد، لاگ را بررسی و فرمان را بعداً تکرار کنید. شناسه اطلاعیه و hash فایل مانع ثبت دوباره رکوردهای تکراری می‌شود.
+
+وضعیت آرشیو و فهرست اطلاعیه‌ها:
+- `GET /api/v1/codal/archive/status?symbol=ساروم`
+- `GET /api/v1/codal/archive/announcements?symbol=ساروم&limit=100`
+
+لاگ worker:
+```powershell
+docker compose logs -f codal-archive
+```
+
+**محدودیت مهم:** این نسخه آرشیو خام، نگهداری نسخه‌ها و polling دوره‌ای را اضافه می‌کند؛ اما parser فعلی فقط تعداد محدودی قلم استاندارد در XLSX/PDF را می‌شناسد. استخراج کامل تمام جدول‌ها، یادداشت‌ها، ریز فروش محصولی و تبدیل دقیق تمام واحدها هنوز تضمین‌شده نیست. گزارش‌های جدید آرشیو می‌شوند، ولی برای خواندن کامل محتوای هر فرم باید parserهای اختصاصی و تست‌شده بر اساس نمونه‌های واقعی توسعه یابد. API جست‌وجوی کدال ممکن است تغییر کند یا محدودیت دسترسی اعمال کند.
