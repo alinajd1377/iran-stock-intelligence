@@ -24,7 +24,7 @@ def _serial(payload):
 
 def discover_sheets(html):
     found = {}
-    patterns = [r"[?&]sheetId=(\\d+)", r"sheetId\\s*[:=]\\s*['\\\"]?(\\d+)", r"SheetId\\s*[:=]\\s*['\\\"]?(\\d+)"]
+    patterns = [r"[?&]sheetId=(\d+)", r"sheetId\\s*[:=]\\s*['\\\"]?(\d+)", r"SheetId\\s*[:=]\\s*['\\\"]?(\d+)"]
     for pattern in patterns:
         for value in re.findall(pattern, html, re.I): found[int(value)] = True
     if not found: found[1] = True
