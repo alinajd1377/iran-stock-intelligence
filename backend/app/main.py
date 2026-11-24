@@ -311,3 +311,76 @@ def manual_codal_archive_sync(symbol: str, pages: int = Query(default=3, ge=1, l
     except Exception as exc:
         raise HTTPException(502, f"آرشیو دستی کدال ناموفق بود: {type(exc).__name__}: {exc}") from exc
 
+
+
+# Reporting and management surfaces (membership checkout intentionally not implemented).
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel():
+    return (Path(__file__).parent / "admin.html").read_text(encoding="utf-8")
+
+@app.get("/api/v1/admin/overview")
+def admin_overview(db: Session = Depends(get_db)):
+    return {
+        "symbols": db.scalar(select(text("count(*)")).select_from(models.Symbol)) or 0,
+        "announcements": db.scalar(select(text("count(*)")).select_from(models.CodalAnnouncement)) or 0,
+        "document_versions": db.scalar(select(text("count(*)")).select_from(models.DocumentVersion)) or 0,
+        "report_sheets": db.scalar(select(text("count(*)")).select_from(models.CodalReportSheet)) or 0,
+        "report_tables": db.scalar(select(text("count(*)")).select_from(models.CodalReportTable)) or 0,
+        "financial_facts": db.scalar(select(text("count(*)")).select_from(models.FinancialFact)) or 0,
+        "fx_rates": db.scalar(select(text("count(*)")).select_from(models.DailyFxRate)) or 0,
+    }
+
+@app.get("/api/v1/reports/monthly")
+def monthly_reports(symbol: str = Query(default="ساروم"), limit: int = Query(default=200, ge=1, le=1000), db: Session = Depends(get_db)):
+    rows=db.scalars(select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker==symbol).order_by(models.CodalAnnouncement.period_end.desc().nullslast(),models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)).all()
+    return [{"id":x.id,"tracing_no":x.tracing_no,"title":x.title,"period_end":x.period_end,"publish_at":x.publish_at,"report_type":x.report_type,"is_audited":x.is_audited,"versions":len(x.versions)} for x in rows if any(k in ((x.title or '')+' '+(x.report_type or '')).lower() for k in ('ماهانه','فعالیت','monthly','month'))]
+
+@app.get("/api/v1/reports/quarterly")
+def quarterly_reports(symbol: str = Query(default="ساروم"), limit: int = Query(default=200, ge=1, le=1000), db: Session = Depends(get_db)):
+    rows=db.scalars(select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker==symbol).order_by(models.CodalAnnouncement.period_end.desc().nullslast(),models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)).all()
+    return [{"id":x.id,"tracing_no":x.tracing_no,"title":x.title,"period_end":x.period_end,"publish_at":x.publish_at,"report_type":x.report_type,"is_audited":x.is_audited,"versions":len(x.versions)} for x in rows if any(k in ((x.title or '')+' '+(x.report_type or '')).lower() for k in ('میان‌دوره','میاندوره','۳ ماه','۶ ماه','۹ ماه','۱۲ ماه','quarter','interim','financial'))]
+
+@app.get("/api/v1/fx/daily")
+def list_fx_rates(limit: int = Query(default=365, ge=1, le=3000), db: Session = Depends(get_db)):
+    rows=db.scalars(select(models.DailyFxRate).order_by(models.DailyFxRate.rate_date.desc()).limit(limit)).all()
+    return [{"id":x.id,"rate_date":x.rate_date,"currency_pair":x.currency_pair,"rate":str(x.rate),"unit":x.unit,"source":x.source} for x in rows]
+
+class FxRateIn(BaseModel):
+    rate_date: date
+    rate: Decimal = Field(gt=0)
+    source: str = "manual"
+    currency_pair: str = "USD/IRR"
+
+@app.post("/api/v1/fx/daily")
+def save_fx_rate(payload: FxRateIn, db: Session = Depends(get_db)):
+    row=db.scalar(select(models.DailyFxRate).where(models.DailyFxRate.rate_date==payload.rate_date,models.DailyFxRate.currency_pair==payload.currency_pair,models.DailyFxRate.source==payload.source))
+    if row is None:
+        row=models.DailyFxRate(rate_date=payload.rate_date,rate=payload.rate,source=payload.source,currency_pair=payload.currency_pair); db.add(row)
+    else: row.rate=payload.rate
+    db.commit(); db.refresh(row)
+    return {"id":row.id,"rate_date":row.rate_date,"rate":str(row.rate),"source":row.source}
+
+@app.get("/api/v1/analytics/catalog")
+def analytics_catalog():
+    return {"available_when_inputs_exist":["EPS","P/E","P/E TTM","Forward P/E","P/B","P/S","PEG","EV/EBITDA","EV/Sales","ROE","ROA","حاشیه سود ناخالص","حاشیه سود عملیاتی","حاشیه سود خالص","نسبت جاری","نسبت سریع","بدهی به حقوق صاحبان سهام","بازده سود نقدی","بازده جریان نقد آزاد"],"calculation_policy":"Only source-linked, period-aligned facts and point-in-time market data are eligible. Missing inputs are not estimated."}
+
+@app.get("/api/v1/codal/reports/{announcement_id}/tables")
+def report_tables(announcement_id: int, db: Session = Depends(get_db)):
+    sheets=db.scalars(select(models.CodalReportSheet).where(models.CodalReportSheet.announcement_id==announcement_id).order_by(models.CodalReportSheet.sheet_id)).all()
+    output=[]
+    for sheet in sheets:
+        tables=db.scalars(select(models.CodalReportTable).where(models.CodalReportTable.sheet_record_id==sheet.id).order_by(models.CodalReportTable.table_index)).all()
+        output.append({"sheet_id":sheet.sheet_id,"title":sheet.sheet_title,"status":sheet.status,"tables":[{"table_index":t.table_index,"caption":t.caption,"headers":t.headers,"rows":t.rows,"row_count":t.row_count,"column_count":t.column_count} for t in tables]})
+    return {"announcement_id":announcement_id,"sheets":output}
+
+@app.post("/api/v1/codal/reports/{announcement_id}/extract")
+def extract_codal_report(announcement_id: int, db: Session = Depends(get_db)):
+    try:
+        from .services.codal_reports import extract_announcement
+        return extract_announcement(db,announcement_id)
+    except ValueError as exc: raise HTTPException(422,str(exc)) from exc
+    except Exception as exc: raise HTTPException(502,f"استخراج جداول کدال ناموفق بود: {type(exc).__name__}: {exc}") from exc
+
+@app.get("/api/v1/admin/symbols")
+def admin_symbols(db: Session = Depends(get_db)):
+    return db.scalars(select(models.Symbol).order_by(models.Symbol.ticker)).all()
