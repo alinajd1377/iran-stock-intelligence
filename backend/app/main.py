@@ -257,3 +257,26 @@ async def search_tsetmc(q: str = Query(min_length=2)):
         return await TsetmcClient().instrument_search(q)
     except Exception as exc:
         raise HTTPException(502, f"جست‌وجوی TSETMC ناموفق بود: {type(exc).__name__}: {exc}") from exc
+
+
+@app.get("/api/v1/codal/archive/status")
+def codal_archive_status(symbol: str = Query(default="ساروم"), db: Session = Depends(get_db)):
+    """Return persisted archive coverage counts for a ticker."""
+    announcements = db.execute(text("SELECT count(*) FROM codal_announcements WHERE symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    versions = db.execute(text("SELECT count(*) FROM document_versions v JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    facts = db.execute(text("SELECT count(*) FROM financial_facts f JOIN codal_announcements a ON a.id=f.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    latest = db.execute(text("SELECT max(fetched_at) FROM codal_announcements WHERE symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    return {"symbol": symbol, "announcements": announcements, "document_versions": versions,
+            "financial_facts": facts, "latest_fetched_at": latest,
+            "worker": "docker compose logs codal-archive",
+            "note": "استخراج facts به parser فعلی و قالب فایل وابسته است؛ آرشیو خام کامل‌تر از داده استخراج‌شده است."}
+
+
+@app.get("/api/v1/codal/archive/announcements")
+def codal_archive_announcements(symbol: str = Query(default="ساروم"), limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
+    rows = db.scalars(select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker == symbol)
+                      .order_by(models.CodalAnnouncement.publish_at.desc().nullslast(), models.CodalAnnouncement.id.desc())
+                      .limit(limit)).all()
+    return [{"id": x.id, "tracing_no": x.tracing_no, "title": x.title, "publish_at": x.publish_at,
+             "period_end": x.period_end, "report_type": x.report_type, "is_audited": x.is_audited,
+             "source_url": x.source_url, "versions": len(x.versions)} for x in rows]
