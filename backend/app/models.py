@@ -144,3 +144,28 @@ class DocumentContentItem(Base):
     content_kind: Mapped[str] = mapped_column(String(32), default="text")
     content_text: Mapped[str] = mapped_column(Text)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CodalReportSheet(Base):
+    __tablename__ = "codal_report_sheets"
+    __table_args__ = (UniqueConstraint("announcement_id", "sheet_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey("codal_announcements.id", ondelete="CASCADE"), index=True)
+    sheet_id: Mapped[int] = mapped_column(Integer)
+    sheet_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32), default="extracted")
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class CodalReportTable(Base):
+    __tablename__ = "codal_report_tables"
+    __table_args__ = (UniqueConstraint("sheet_record_id", "table_index"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sheet_record_id: Mapped[int] = mapped_column(ForeignKey("codal_report_sheets.id", ondelete="CASCADE"), index=True)
+    table_index: Mapped[int] = mapped_column(Integer)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    headers: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    rows: Mapped[list] = mapped_column(JSON, default=list)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    column_count: Mapped[int] = mapped_column(Integer, default=0)
