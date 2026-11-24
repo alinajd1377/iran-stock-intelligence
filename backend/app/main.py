@@ -287,10 +287,12 @@ def codal_archive_status(symbol: str = Query(default="ساروم"), db: Session 
     versions = db.execute(text("SELECT count(*) FROM document_versions v JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     facts = db.execute(text("SELECT count(*) FROM financial_facts f JOIN codal_announcements a ON a.id=f.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     latest = db.execute(text("SELECT max(fetched_at) FROM codal_announcements WHERE symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    report_tables = db.execute(text("SELECT count(*) FROM codal_report_tables t JOIN codal_report_sheets s ON s.id=t.sheet_record_id JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    report_sheets = db.execute(text("SELECT count(*) FROM codal_report_sheets s JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     return {"symbol": symbol, "announcements": announcements, "document_versions": versions,
-            "financial_facts": facts, "latest_fetched_at": latest,
-            "worker": "docker compose logs codal-archive",
-            "note": "استخراج facts به parser فعلی و قالب فایل وابسته است؛ آرشیو خام کامل‌تر از داده استخراج‌شده است."}
+            "financial_facts": facts, "report_sheets": report_sheets, "report_tables": report_tables,
+            "latest_fetched_at": latest, "worker": "docker compose logs codal-archive",
+            "note": "متن و جدول‌های خام با منبع و شماره شیت ذخیره می‌شوند؛ نگاشت معنایی اقلام مالی نیازمند قواعد اختصاصی است."}
 
 
 @app.get("/api/v1/codal/archive/announcements")
