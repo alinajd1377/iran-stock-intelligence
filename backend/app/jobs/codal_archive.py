@@ -306,6 +306,15 @@ def archive_row(db, client, symbol, row):
         except Exception as exc:
             LOG.warning("Could not download %s (%s): %s", meta["tracing"], url, exc)
     db.commit()
+    # Automatically extract all workbook sheets/tables for N-10 and N-30 filings.
+    code = (meta.get("report_type") or "").replace(" ", "").replace("－", "-")
+    if code in ("ن-۱۰", "ن-10", "ن-۳۰", "ن-30"):
+        try:
+            from app.services.codal_reports import extract_announcement
+            extract_announcement(db, announcement.id, delay_seconds=1.0)
+        except Exception:
+            db.rollback()
+            LOG.exception("Automatic Decision-table extraction failed for %s", meta["tracing"])
     return created, files, facts_count
 
 def reprocess_symbol(symbol, limit=5000):
