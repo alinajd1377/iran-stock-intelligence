@@ -134,7 +134,7 @@ def dashboard():
 
 @app.get("/")
 def root():
-    return {"name": settings.app_name, "version": "0.3.0", "docs": "/docs"}
+    return {"name": settings.app_name, "version": "0.4.0", "docs": "/docs"}
 
 @app.get("/health")
 def health():
