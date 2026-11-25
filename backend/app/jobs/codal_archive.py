@@ -167,7 +167,7 @@ def save_file(client, url):
 
 
 def extract_content_items(path):
-    """Extract searchable source text/cells while preserving the original file."""
+    """Extract spreadsheet cells, PDF tables/text and OCR fallback; retain the original file."""
     suffix = Path(path).suffix.lower()
     items = []
     if suffix in (".xlsx", ".xlsm"):
@@ -179,6 +179,16 @@ def extract_content_items(path):
                     if value is not None and str(value).strip():
                         items.append((f"{sheet.title}!R{rno}C{cno}", "cell", str(value)[:12000]))
         book.close()
+    elif suffix == ".xls":
+        import xlrd
+        book = xlrd.open_workbook(path, on_demand=True)
+        for sheet in book.sheets():
+            for rno in range(sheet.nrows):
+                for cno in range(sheet.ncols):
+                    value = sheet.cell_value(rno, cno)
+                    if value is not None and str(value).strip():
+                        items.append((f"{sheet.name}!R{rno+1}C{cno+1}", "cell", str(value)[:12000]))
+        book.release_resources()
     elif suffix == ".pdf":
         import pdfplumber
         with pdfplumber.open(path) as pdf:
@@ -191,6 +201,19 @@ def extract_content_items(path):
                         for col_no, value in enumerate(row or [], start=1):
                             if value is not None and str(value).strip():
                                 items.append((f"page:{page_no}:table:{table_no}:r{row_no}:c{col_no}", "table_cell", str(value)[:12000]))
+                if not content.strip():
+                    try:
+                        import fitz, pytesseract, io
+                        from PIL import Image
+                        document = fitz.open(path)
+                        pix = document.load_page(page_no - 1).get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                        image = Image.open(io.BytesIO(pix.tobytes("png")))
+                        ocr_text = pytesseract.image_to_string(image, lang="fas+eng", config="--psm 6")
+                        if ocr_text.strip():
+                            items.append((f"page:{page_no}:ocr", "ocr_text", ocr_text[:50000]))
+                        document.close()
+                    except Exception:
+                        LOG.exception("OCR fallback failed for %s page %s", path, page_no)
     elif suffix in (".html", ".htm"):
         from html.parser import HTMLParser
         class TextCollector(HTMLParser):
