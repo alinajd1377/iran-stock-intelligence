@@ -605,12 +605,21 @@ async def sync_tgju_fx(db: Session = Depends(get_db)):
             db.add(row); action = "insert"; inserted += 1
         else:
             if row.rate == rate:
-                continue
-            row.rate = rate; action = "update"; updated += 1
+                action = None
+            else:
+                row.rate = rate; action = "update"; updated += 1
         db.flush()
-        db.add(models.FxRateAudit(rate_id=row.id, rate_date=day, currency_pair="USD/IRR",
-            old_rate=old_rate, new_rate=rate, source="tgju", action=action, actor="tgju-scraper",
-            source_url=TGJU_HISTORY_URL, raw_payload={"row": item["raw"]}))
+        if action:
+            db.add(models.FxRateAudit(rate_id=row.id, rate_date=day, currency_pair="USD/IRR",
+                old_rate=old_rate, new_rate=rate, source="tgju", action=action, actor="tgju-scraper",
+                source_url=TGJU_HISTORY_URL, raw_payload={"row": item["raw"]}))
+        bar = db.scalar(select(models.DailyFxRateBar).where(models.DailyFxRateBar.rate_id == row.id))
+        if bar is None:
+            bar = models.DailyFxRateBar(rate_id=row.id, close=item["close"])
+            db.add(bar)
+        bar.open = item["open"]; bar.low = item["low"]; bar.high = item["high"]
+        bar.close = item["close"]; bar.jalali_date = item["jalali_date"] or None
+        bar.source_url = TGJU_HISTORY_URL
     db.commit()
     return {"source":"tgju","rows_received":len(rows),"inserted":inserted,"updated":updated,
             "first_date":rows[0]["rate_date"],"last_date":rows[-1]["rate_date"],
