@@ -330,22 +330,24 @@ def reprocess_symbol(symbol, limit=5000):
             .order_by(models.DocumentVersion.id).limit(limit)).all()
         for version in versions:
             totals["versions_checked"] += 1
-            existing = db.scalar(select(models.DocumentContentItem.id)
-                .where(models.DocumentContentItem.document_version_id == version.id).limit(1))
-            if existing:
-                continue
             try:
                 path = Path(version.storage_path)
                 if not path.exists():
                     totals["failed"] += 1
                     continue
+                existing_locators = set(db.scalars(select(models.DocumentContentItem.locator)
+                    .where(models.DocumentContentItem.document_version_id == version.id)).all())
                 extracted = extract_content_items(path)
+                added = 0
                 for locator, kind, value in extracted:
+                    if locator in existing_locators:
+                        continue
                     db.add(models.DocumentContentItem(document_version_id=version.id,
                         locator=locator, content_kind=kind, content_text=value))
+                    added += 1
                 db.commit()
                 totals["versions_processed"] += 1
-                totals["content_items_added"] += len(extracted)
+                totals["content_items_added"] += added
             except Exception:
                 db.rollback()
                 totals["failed"] += 1
