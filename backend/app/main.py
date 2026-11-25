@@ -26,7 +26,9 @@ async def lifespan(app: FastAPI):
     with Session(engine) as db:
         if not db.scalar(select(models.Symbol).where(models.Symbol.ticker == "ساروم")):
             db.add(models.Symbol(ticker="ساروم", name="سیمان ارومیه"))
-            db.commit()
+        if not db.scalar(select(models.Symbol).where(models.Symbol.ticker == "کسعدی")):
+            db.add(models.Symbol(ticker="کسعدی", name="کاشی سعدی"))
+        db.commit()
     yield
 
 app = FastAPI(title=settings.app_name, version="0.4.0", description="Iranian equity research platform", lifespan=lifespan)
