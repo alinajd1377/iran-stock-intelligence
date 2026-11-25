@@ -383,6 +383,8 @@ def codal_archive_status(symbol: str = Query(default="ساروم"), db: Session 
     report_tables = db.execute(text("SELECT count(*) FROM codal_report_tables t JOIN codal_report_sheets s ON s.id=t.sheet_record_id JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     report_sheets = db.execute(text("SELECT count(*) FROM codal_report_sheets s JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     content_items = db.execute(text("SELECT count(*) FROM document_content_items i JOIN document_versions v ON v.id=i.document_version_id JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    html_cells = db.execute(text("SELECT count(*) FROM codal_report_cells c JOIN codal_announcements a ON a.id=c.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    content_items += html_cells
     extracted_versions = db.execute(text("SELECT count(DISTINCT v.id) FROM document_versions v JOIN codal_announcements a ON a.id=v.announcement_id JOIN document_content_items i ON i.document_version_id=v.id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     cell_kinds = db.execute(text("SELECT i.content_kind, count(*) FROM document_content_items i JOIN document_versions v ON v.id=i.document_version_id JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s GROUP BY i.content_kind"), {"s": symbol}).all()
     coverage = round((extracted_versions / versions) * 100, 1) if versions else 0
