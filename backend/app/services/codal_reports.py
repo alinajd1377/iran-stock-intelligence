@@ -83,7 +83,7 @@ def render_decision_page(url, timeout_ms=60000):
         browser = playwright.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             page.wait_for_timeout(1200)
             return page.content()
         finally:
