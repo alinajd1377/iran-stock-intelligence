@@ -455,8 +455,13 @@ def quarterly_reports(symbol: str = Query(default="ساروم"), limit: int = Qu
 
 @app.get("/api/v1/fx/daily")
 def list_fx_rates(limit: int = Query(default=365, ge=1, le=3000), db: Session = Depends(get_db)):
-    rows=db.scalars(select(models.DailyFxRate).order_by(models.DailyFxRate.rate_date.desc()).limit(limit)).all()
-    return [{"id":x.id,"rate_date":x.rate_date,"currency_pair":x.currency_pair,"rate":str(x.rate),"unit":x.unit,"source":x.source} for x in rows]
+    rows=db.execute(select(models.DailyFxRate, models.DailyFxRateBar).outerjoin(models.DailyFxRateBar, models.DailyFxRateBar.rate_id == models.DailyFxRate.id).order_by(models.DailyFxRate.rate_date.desc()).limit(limit)).all()
+    return [{"id":x.id,"rate_date":x.rate_date,"currency_pair":x.currency_pair,"rate":str(x.rate),"unit":x.unit,"source":x.source,
+             "open":str(bar.open) if bar and bar.open is not None else None,
+             "low":str(bar.low) if bar and bar.low is not None else None,
+             "high":str(bar.high) if bar and bar.high is not None else None,
+             "close":str(bar.close) if bar else str(x.rate),
+             "jalali_date":bar.jalali_date if bar else None} for x,bar in rows]
 
 class FxRateIn(BaseModel):
     rate_date: date
