@@ -395,11 +395,16 @@ def main():
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
     Base.metadata.create_all(bind=engine)
     if args.reprocess:
-        for symbol in SYMBOLS:
+        symbols = configured_symbols()
+        LOG.info("Codal archive symbol universe: %s symbols", len(symbols))
+        for symbol in symbols:
             LOG.info("Reprocess result: %s", reprocess_symbol(symbol, limit=args.pages * PAGE_SIZE))
         return
     while True:
-        for symbol in SYMBOLS:
+        # Refresh the universe each cycle so new TSETMC imports are picked up without rebuilding.
+        symbols = configured_symbols()
+        LOG.info("Codal archive symbol universe: %s symbols", len(symbols))
+        for symbol in symbols:
             try:
                 pages = args.pages if args.backfill else int(os.getenv("CODAL_INCREMENTAL_PAGES", "3"))
                 LOG.info("Archive result: %s", sync_symbol(symbol, pages, args.backfill))
