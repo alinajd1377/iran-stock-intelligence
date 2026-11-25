@@ -37,14 +37,16 @@ LOGIN_ATTEMPTS: dict[str, list[float]] = {}
 def _admin_session_token(username: str, expires_at: int) -> str:
     payload = f"{username}:{expires_at}".encode()
     signature = hmac.new(settings.admin_session_secret.encode(), payload, hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(payload + b":" + signature).decode().rstrip("=")
+    part = lambda value: base64.urlsafe_b64encode(value).decode().rstrip("=")
+    return part(payload) + "." + part(signature)
 
 def _valid_admin_session(token: str | None) -> bool:
     if not token or not settings.admin_username or not settings.admin_password or not settings.admin_session_secret: return False
     try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
-        username, expiry, signature = raw.rsplit(b":", 1)
-        payload = username + b":" + expiry
+        payload_part, signature_part = token.split(".", 1)
+        decode = lambda value: base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        payload, signature = decode(payload_part), decode(signature_part)
+        username, expiry = payload.rsplit(b":", 1)
         expected = hmac.new(settings.admin_session_secret.encode(), payload, hashlib.sha256).digest()
         return hmac.compare_digest(signature, expected) and hmac.compare_digest(username.decode(), settings.admin_username) and int(expiry) > int(time.time())
     except (ValueError, UnicodeDecodeError): return False
