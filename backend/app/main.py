@@ -464,9 +464,17 @@ class FxRateIn(BaseModel):
 @app.post("/api/v1/fx/daily")
 def save_fx_rate(payload: FxRateIn, db: Session = Depends(get_db)):
     row=db.scalar(select(models.DailyFxRate).where(models.DailyFxRate.rate_date==payload.rate_date,models.DailyFxRate.currency_pair==payload.currency_pair,models.DailyFxRate.source==payload.source))
+    old_rate = row.rate if row is not None else None
     if row is None:
         row=models.DailyFxRate(rate_date=payload.rate_date,rate=payload.rate,source=payload.source,currency_pair=payload.currency_pair); db.add(row)
-    else: row.rate=payload.rate
+        action = "insert"
+    else:
+        row.rate=payload.rate
+        action = "update"
+    db.flush()
+    db.add(models.FxRateAudit(rate_id=row.id, rate_date=payload.rate_date, currency_pair=payload.currency_pair,
+        old_rate=old_rate, new_rate=payload.rate, source=payload.source, action=action,
+        actor="admin" if payload.source == "manual" else "system"))
     db.commit(); db.refresh(row)
     return {"id":row.id,"rate_date":row.rate_date,"rate":str(row.rate),"source":row.source}
 
@@ -507,3 +515,100 @@ def extract_codal_report_batch(symbol: str, limit: int = Query(default=50, ge=1,
         except Exception as exc:
             db.rollback(); results.append({"announcement_id":item.id,"title":item.title,"error":f"{type(exc).__name__}: {exc}"})
     return {"symbol":symbol,"checked":len(announcements),"processed":len(results),"results":results}
+
+
+# Historical instrument catalog: keep delisted, suspended and renamed tickers as records.
+class SymbolHistoryIn(BaseModel):
+    ticker: str = Field(min_length=1, max_length=32)
+    company_name: str = Field(min_length=1, max_length=255)
+    company_key: str | None = None
+    isin: str | None = None
+    market: str | None = None
+    industry: str | None = None
+    instrument_type: str = "stock"
+    status: str = "unknown"
+    valid_from: date | None = None
+    valid_to: date | None = None
+    source: str = "manual"
+    source_url: str | None = None
+    raw_payload: dict | None = None
+
+
+class SymbolHistoryBatchIn(BaseModel):
+    items: list[SymbolHistoryIn] = Field(min_length=1, max_length=10000)
+
+
+@app.get("/api/v1/symbol-history")
+def list_symbol_history(q: str | None = None, status: str | None = None,
+                        limit: int = Query(default=500, ge=1, le=5000), offset: int = Query(default=0, ge=0),
+                        db: Session = Depends(get_db)):
+    stmt = select(models.SymbolHistory)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where((models.SymbolHistory.ticker.ilike(pattern)) | (models.SymbolHistory.company_name.ilike(pattern)) | (models.SymbolHistory.isin.ilike(pattern)))
+    if status:
+        stmt = stmt.where(models.SymbolHistory.status == status)
+    rows = db.scalars(stmt.order_by(models.SymbolHistory.ticker, models.SymbolHistory.valid_from).offset(offset).limit(limit)).all()
+    return [{"id":x.id,"ticker":x.ticker,"company_name":x.company_name,"company_key":x.company_key,"isin":x.isin,
+             "market":x.market,"industry":x.industry,"instrument_type":x.instrument_type,"status":x.status,
+             "valid_from":x.valid_from,"valid_to":x.valid_to,"source":x.source} for x in rows]
+
+
+@app.post("/api/v1/admin/symbol-history/import")
+def import_symbol_history(payload: SymbolHistoryBatchIn, db: Session = Depends(get_db)):
+    inserted = updated = 0
+    for item in payload.items:
+        data = item.model_dump()
+        existing = db.scalar(select(models.SymbolHistory).where(
+            models.SymbolHistory.ticker == item.ticker,
+            models.SymbolHistory.valid_from == item.valid_from,
+            models.SymbolHistory.company_name == item.company_name))
+        if existing is None:
+            db.add(models.SymbolHistory(**data)); inserted += 1
+        else:
+            for key, value in data.items():
+                setattr(existing, key, value)
+            updated += 1
+    db.commit()
+    return {"received":len(payload.items),"inserted":inserted,"updated":updated,"note":"سوابق تاریخی نگهداری می‌شوند و رکورد حذف‌شده‌ای پاک نمی‌شود."}
+
+
+@app.get("/api/v1/admin/fx/audit")
+def fx_audit(limit: int = Query(default=200, ge=1, le=2000), db: Session = Depends(get_db)):
+    rows = db.scalars(select(models.FxRateAudit).order_by(models.FxRateAudit.created_at.desc()).limit(limit)).all()
+    return [{"id":x.id,"rate_date":x.rate_date,"old_rate":str(x.old_rate) if x.old_rate is not None else None,
+             "new_rate":str(x.new_rate),"source":x.source,"action":x.action,"actor":x.actor,"created_at":x.created_at}
+            for x in rows]
+
+
+@app.post("/api/v1/admin/fx/tgju-sync")
+async def sync_tgju_fx(db: Session = Depends(get_db)):
+    """Fetch TGJU historical USD/IRR observations and upsert them without estimating missing dates."""
+    from .services.tgju import fetch_history, TGJU_HISTORY_URL
+    try:
+        rows, raw_payload = await fetch_history()
+    except Exception as exc:
+        raise HTTPException(502, f"دریافت تاریخچه TGJU ناموفق بود: {type(exc).__name__}: {exc}") from exc
+    inserted = updated = 0
+    for item in rows:
+        day, rate = item["rate_date"], item["rate"]
+        row = db.scalar(select(models.DailyFxRate).where(
+            models.DailyFxRate.rate_date == day,
+            models.DailyFxRate.currency_pair == "USD/IRR",
+            models.DailyFxRate.source == "tgju"))
+        old_rate = row.rate if row is not None else None
+        if row is None:
+            row = models.DailyFxRate(rate_date=day, rate=rate, source="tgju", currency_pair="USD/IRR")
+            db.add(row); action = "insert"; inserted += 1
+        else:
+            if row.rate == rate:
+                continue
+            row.rate = rate; action = "update"; updated += 1
+        db.flush()
+        db.add(models.FxRateAudit(rate_id=row.id, rate_date=day, currency_pair="USD/IRR",
+            old_rate=old_rate, new_rate=rate, source="tgju", action=action, actor="tgju-scraper",
+            source_url=TGJU_HISTORY_URL, raw_payload={"row": item["raw"]}))
+    db.commit()
+    return {"source":"tgju","rows_received":len(rows),"inserted":inserted,"updated":updated,
+            "first_date":rows[0]["rate_date"],"last_date":rows[-1]["rate_date"],
+            "unit":"IRR per USD","note":"تاریخ‌های بدون رکورد در منبع، حدس یا پر نمی‌شوند."}
