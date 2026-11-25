@@ -2,6 +2,7 @@
 import hashlib
 import re
 import time
+from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qs, urlparse
 import httpx
 from sqlalchemy import select
@@ -112,6 +113,24 @@ def render_decision_page(url, timeout_ms=60000):
         finally:
             browser.close()
 
+def parse_numeric_cell(value):
+    """Parse conservative numeric cells; original text is always retained."""
+    raw = str(value or "").strip()
+    if not raw or "%" in raw or "٪" in raw or "/" in raw:
+        return None
+    table = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    normalized = raw.translate(table).replace("٬", "").replace(",", "").replace("٫", ".").replace("−", "-")
+    negative = normalized.startswith("(") and normalized.endswith(")")
+    if negative:
+        normalized = normalized[1:-1].strip()
+    normalized = normalized.replace(" ", "")
+    try:
+        number = Decimal(normalized)
+        return -number if negative else number
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
     announcement=db.get(models.CodalAnnouncement,announcement_id)
     if not announcement: raise ValueError("announcement not found")
@@ -191,9 +210,19 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
                         if value is None or not str(value).strip():
                             continue
                         locator = f"Sheet{sheet_id}!Table{table_index}!R{row_no}C{column_no}"
-                        db.add(models.CodalReportCell(announcement_id=announcement_id, sheet_id=sheet_id,
+                        cell=models.CodalReportCell(announcement_id=announcement_id, sheet_id=sheet_id,
                             table_index=table_index, row_no=row_no, column_no=column_no,
-                            locator=locator, cell_text=str(value)[:12000], content_kind="table_cell"))
+                            locator=locator, cell_text=str(value)[:12000], content_kind="table_cell")
+                        db.add(cell)
+                        db.flush()
+                        numeric=parse_numeric_cell(value)
+                        row_label=str((row_values or [""])[0] or "")[:1000] if column_no > 1 else None
+                        headers=table.get("headers") or []
+                        column_header=str(headers[column_no-1] or "")[:1000] if len(headers) >= column_no else None
+                        db.add(models.CodalCellValue(source_cell_id=cell.id,row_label=row_label,
+                            column_header=column_header,numeric_value=numeric,
+                            parse_status="parsed" if numeric is not None else "not_numeric",
+                            unit="unknown" if numeric is not None else None))
                 total["tables_saved"]+=1
                 total["rows_saved"]+=table["row_count"]
         db.commit()
