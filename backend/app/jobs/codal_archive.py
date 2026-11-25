@@ -312,6 +312,38 @@ def archive_row(db, client, symbol, row):
     db.commit()
     return created, files, facts_count
 
+def reprocess_symbol(symbol, limit=5000):
+    """Re-run the latest cell/text extractor on already archived source files."""
+    totals = {"symbol": symbol, "versions_checked": 0, "versions_processed": 0,
+              "content_items_added": 0, "failed": 0}
+    with Session(engine) as db:
+        versions = db.scalars(select(models.DocumentVersion).join(models.CodalAnnouncement)
+            .where(models.CodalAnnouncement.symbol_ticker == symbol)
+            .order_by(models.DocumentVersion.id).limit(limit)).all()
+        for version in versions:
+            totals["versions_checked"] += 1
+            existing = db.scalar(select(models.DocumentContentItem.id)
+                .where(models.DocumentContentItem.document_version_id == version.id).limit(1))
+            if existing:
+                continue
+            try:
+                path = Path(version.storage_path)
+                if not path.exists():
+                    totals["failed"] += 1
+                    continue
+                extracted = extract_content_items(path)
+                for locator, kind, value in extracted:
+                    db.add(models.DocumentContentItem(document_version_id=version.id,
+                        locator=locator, content_kind=kind, content_text=value))
+                db.commit()
+                totals["versions_processed"] += 1
+                totals["content_items_added"] += len(extracted)
+            except Exception:
+                db.rollback()
+                totals["failed"] += 1
+                LOG.exception("Reprocessing failed for document version %s", version.id)
+    return totals
+
 def sync_symbol(symbol, max_pages, backfill):
     totals = {"symbol": symbol, "pages": 0, "rows_seen": 0, "announcements_added": 0, "files_added": 0, "facts_added": 0}
     headers = {"User-Agent": "Mozilla/5.0 IranStockIntelligence/1.0"}
@@ -347,9 +379,14 @@ def main():
     parser.add_argument("--pages", type=int, default=1000)
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--reprocess", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
     Base.metadata.create_all(bind=engine)
+    if args.reprocess:
+        for symbol in SYMBOLS:
+            LOG.info("Reprocess result: %s", reprocess_symbol(symbol, limit=args.pages * PAGE_SIZE))
+        return
     while True:
         for symbol in SYMBOLS:
             try:
