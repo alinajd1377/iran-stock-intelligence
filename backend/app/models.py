@@ -222,3 +222,15 @@ class CodalReportCell(Base):
     cell_text: Mapped[str] = mapped_column(Text)
     content_kind: Mapped[str] = mapped_column(String(32), default="table_cell")
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class DailyFxRateBar(Base):
+    """Daily OHLC values supplied by the FX source; manual observations may omit this row."""
+    __tablename__ = "daily_fx_rate_bars"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rate_id: Mapped[int] = mapped_column(ForeignKey("daily_fx_rates.id", ondelete="CASCADE"), unique=True, index=True)
+    open: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    low: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    high: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    close: Mapped[Decimal] = mapped_column(Numeric(24, 4))
+    jalali_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
