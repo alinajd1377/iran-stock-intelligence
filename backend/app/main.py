@@ -402,6 +402,16 @@ def codal_archive_announcements(symbol: str = Query(default="ساروم"), limit
              "period_end": x.period_end, "report_type": x.report_type, "is_audited": x.is_audited,
              "source_url": x.source_url, "versions": len(x.versions)} for x in rows]
 
+@app.post("/api/v1/codal/archive/reprocess/{symbol}")
+def reprocess_codal_archive(symbol: str, limit: int = Query(default=5000, ge=1, le=50000)):
+    """Re-extract cell/text content from already downloaded raw files."""
+    try:
+        from .jobs.codal_archive import reprocess_symbol
+        return reprocess_symbol(symbol, limit=limit)
+    except Exception as exc:
+        raise HTTPException(502, f"بازاستخراج محتوای آرشیو ناموفق بود: {type(exc).__name__}: {exc}") from exc
+
+
 @app.post("/api/v1/codal/archive/sync/{symbol}")
 def manual_codal_archive_sync(symbol: str, pages: int = Query(default=3, ge=1, le=1000)):
     """Run the same archive-and-download pipeline used by the background worker."""
