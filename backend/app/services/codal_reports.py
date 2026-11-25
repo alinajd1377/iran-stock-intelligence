@@ -48,7 +48,6 @@ def discover_sheets(html):
     patterns = [r"[?&]sheetId=([0-9]+)", r"sheetId[^0-9]{0,10}([0-9]+)", r"SheetId[^0-9]{0,10}([0-9]+)"]
     for pattern in patterns:
         for value in re.findall(pattern, html, re.I): found[int(value)] = True
-    if not found: found[1] = True
     return sorted(found)
 
 def parse_html_tables(html):
@@ -77,6 +76,19 @@ def parse_html_tables(html):
         if rows: output.append({"caption":table["caption"],"headers":rows[0],"rows":rows[1:] if len(rows)>1 else [],"row_count":len(rows),"column_count":max(map(len,rows),default=0)})
     return output
 
+def render_decision_page(url, timeout_ms=60000):
+    """Render a Codal Decision page using the legacy Playwright scraping approach."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            page.wait_for_timeout(1200)
+            return page.content()
+        finally:
+            browser.close()
+
 def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
     announcement=db.get(models.CodalAnnouncement,announcement_id)
     if not announcement: raise ValueError("announcement not found")
@@ -92,6 +104,9 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
         response=client.get(decision,params={"LetterSerial":serial,"rt":0,"let":letter_type,"ct":0,"ft":-1,"sheetId":1})
         response.raise_for_status()
         sheet_ids=discover_sheets(response.text)
+        if not sheet_ids:
+            # ZIP reference: LetterType 58 monthly page; LetterType 6 interim sheets 0, 1, 9.
+            sheet_ids = [0] if letter_type == 58 else ([0, 1, 9] if letter_type == 6 else [1])
         total["sheets_found"]=len(sheet_ids)
         for idx,sheet_id in enumerate(sheet_ids):
             url=f"{decision}?LetterSerial={serial}&rt=0&let={letter_type}&ct=0&ft=-1&sheetId={sheet_id}"
@@ -101,7 +116,17 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
                 time.sleep(delay_seconds)
                 page=client.get(url); page.raise_for_status()
             tables=parse_html_tables(page.text)
-            if not tables and sheet_id == 1:
+            page_content = page.content
+            if not tables:
+                try:
+                    rendered_html = render_decision_page(url)
+                    rendered_tables = parse_html_tables(rendered_html)
+                    if rendered_tables:
+                        tables = rendered_tables
+                        page_content = rendered_html.encode("utf-8")
+                except Exception:
+                    pass
+            if not tables and sheet_id in (0, 1):
                 workbook_url=f"{EXCEL_BASE}{serial}/0"
                 workbook=client.get(workbook_url)
                 if workbook.status_code == 200:
@@ -109,8 +134,9 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
                     if fallback_tables:
                         tables=fallback_tables
                         page=workbook
+                        page_content=workbook.content
                         url=workbook_url
-            digest=hashlib.sha256(page.content).hexdigest()
+            digest=hashlib.sha256(page_content).hexdigest()
             sheet=db.scalar(select(models.CodalReportSheet).where(models.CodalReportSheet.announcement_id==announcement_id,models.CodalReportSheet.sheet_id==sheet_id))
             if sheet is None:
                 sheet=models.CodalReportSheet(announcement_id=announcement_id,sheet_id=sheet_id,sheet_title=f"Sheet {sheet_id}",source_url=url,content_hash=digest,status="extracted")
