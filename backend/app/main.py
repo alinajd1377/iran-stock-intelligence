@@ -679,7 +679,7 @@ async def sync_tsetmc_symbol_catalog(db: Session = Depends(get_db)):
                 company_key=str(ins_code) if ins_code else None, isin=str(isin) if isin else None,
                 market=str(market) if market is not None else None,
                 industry=str(industry) if industry is not None else None,
-                instrument_type="stock", status="active", source="tsetmc",
+                instrument_type=str(data.get("papertypetitle") or data.get("papertype") or "security"), status="listed", source="tsetmc",
                 source_url="https://cdn.tsetmc.com/api/ClosingPrice/GetMarketWatch",
                 raw_payload=raw))
             inserted += 1
@@ -688,7 +688,7 @@ async def sync_tsetmc_symbol_catalog(db: Session = Depends(get_db)):
             existing.isin = str(isin) if isin else existing.isin
             existing.market = str(market) if market is not None else existing.market
             existing.industry = str(industry) if industry is not None else existing.industry
-            existing.status = "active"
+            existing.status = "listed"
             existing.source = "tsetmc"
             existing.raw_payload = raw
             updated += 1
