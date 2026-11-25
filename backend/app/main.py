@@ -164,11 +164,38 @@ def add_symbol(payload: SymbolIn, db: Session = Depends(get_db)):
     return row
 
 @app.get("/api/v1/codal/archive/items")
-def codal_archive_items(announcement_id: int, limit: int = Query(default=500, ge=1, le=5000), db: Session = Depends(get_db)):
-    rows = db.scalars(select(models.DocumentContentItem).join(models.DocumentVersion)
-        .where(models.DocumentVersion.announcement_id == announcement_id)
-        .order_by(models.DocumentContentItem.id).limit(limit)).all()
-    return [{"locator": x.locator, "kind": x.content_kind, "text": x.content_text} for x in rows]
+def codal_archive_items(announcement_id: int, limit: int = Query(default=500, ge=1, le=5000),
+                        offset: int = Query(default=0, ge=0), q: str | None = Query(default=None, max_length=200),
+                        db: Session = Depends(get_db)):
+    stmt = select(models.DocumentContentItem).join(models.DocumentVersion).where(
+        models.DocumentVersion.announcement_id == announcement_id)
+    if q: stmt = stmt.where(models.DocumentContentItem.content_text.ilike(f"%{q}%"))
+    rows = db.scalars(stmt.order_by(models.DocumentContentItem.id).offset(offset).limit(limit)).all()
+    return [{"id": x.id, "locator": x.locator, "kind": x.content_kind, "text": x.content_text,
+             "document_version_id": x.document_version_id} for x in rows]
+
+@app.get("/api/v1/codal/reports/{announcement_id}/cells")
+def codal_report_cells(announcement_id: int, limit: int = Query(default=500, ge=1, le=2000),
+                       offset: int = Query(default=0, ge=0), q: str | None = Query(default=None, max_length=200),
+                       db: Session = Depends(get_db)):
+    if db.get(models.CodalAnnouncement, announcement_id) is None: raise HTTPException(404, "گزارش پیدا نشد")
+    base = select(models.DocumentContentItem, models.DocumentVersion).join(
+        models.DocumentVersion, models.DocumentContentItem.document_version_id == models.DocumentVersion.id
+    ).where(models.DocumentVersion.announcement_id == announcement_id)
+    count = select(text("count(*)")).select_from(models.DocumentContentItem).join(
+        models.DocumentVersion, models.DocumentContentItem.document_version_id == models.DocumentVersion.id
+    ).where(models.DocumentVersion.announcement_id == announcement_id)
+    if q:
+        pattern = f"%{q}%"
+        base = base.where(models.DocumentContentItem.content_text.ilike(pattern))
+        count = count.where(models.DocumentContentItem.content_text.ilike(pattern))
+    total = db.execute(count).scalar_one()
+    rows = db.execute(base.order_by(models.DocumentVersion.version_no, models.DocumentContentItem.id)
+                      .offset(offset).limit(limit)).all()
+    return {"announcement_id": announcement_id, "total": total, "limit": limit, "offset": offset,
+            "items": [{"locator": item.locator, "kind": item.content_kind, "text": item.content_text,
+                       "file_name": version.file_name, "version_no": version.version_no}
+                      for item, version in rows]}
 
 @app.get("/api/v1/research/sarom")
 def sarom_research():
@@ -354,10 +381,16 @@ def codal_archive_status(symbol: str = Query(default="ساروم"), db: Session 
     latest = db.execute(text("SELECT max(fetched_at) FROM codal_announcements WHERE symbol_ticker=:s"), {"s": symbol}).scalar_one()
     report_tables = db.execute(text("SELECT count(*) FROM codal_report_tables t JOIN codal_report_sheets s ON s.id=t.sheet_record_id JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
     report_sheets = db.execute(text("SELECT count(*) FROM codal_report_sheets s JOIN codal_announcements a ON a.id=s.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    content_items = db.execute(text("SELECT count(*) FROM document_content_items i JOIN document_versions v ON v.id=i.document_version_id JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    extracted_versions = db.execute(text("SELECT count(DISTINCT v.id) FROM document_versions v JOIN codal_announcements a ON a.id=v.announcement_id JOIN document_content_items i ON i.document_version_id=v.id WHERE a.symbol_ticker=:s"), {"s": symbol}).scalar_one()
+    cell_kinds = db.execute(text("SELECT i.content_kind, count(*) FROM document_content_items i JOIN document_versions v ON v.id=i.document_version_id JOIN codal_announcements a ON a.id=v.announcement_id WHERE a.symbol_ticker=:s GROUP BY i.content_kind"), {"s": symbol}).all()
+    coverage = round((extracted_versions / versions) * 100, 1) if versions else 0
     return {"symbol": symbol, "announcements": announcements, "document_versions": versions,
             "financial_facts": facts, "report_sheets": report_sheets, "report_tables": report_tables,
+            "content_items": content_items, "extracted_versions": extracted_versions,
+            "extraction_coverage_percent": coverage, "content_kinds": {kind: count for kind, count in cell_kinds},
             "latest_fetched_at": latest, "worker": "docker compose logs codal-archive",
-            "note": "متن و جدول‌های خام با منبع و شماره شیت ذخیره می‌شوند؛ نگاشت معنایی اقلام مالی نیازمند قواعد اختصاصی است."}
+            "note": "محتوای سلول‌ها و متن با locator و نسخه فایل ذخیره می‌شود؛ نتایج OCR باید با سند اصلی بازبینی شوند."}
 
 
 @app.get("/api/v1/codal/archive/announcements")
