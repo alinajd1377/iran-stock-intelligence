@@ -207,3 +207,18 @@ class FxRateAudit(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class CodalReportCell(Base):
+    """Individual HTML Decision-page table cells with exact table/row/column coordinates."""
+    __tablename__ = "codal_report_cells"
+    __table_args__ = (UniqueConstraint("announcement_id", "locator"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey("codal_announcements.id", ondelete="CASCADE"), index=True)
+    sheet_id: Mapped[int] = mapped_column(Integer)
+    table_index: Mapped[int] = mapped_column(Integer)
+    row_no: Mapped[int] = mapped_column(Integer)
+    column_no: Mapped[int] = mapped_column(Integer)
+    locator: Mapped[str] = mapped_column(String(512), index=True)
+    cell_text: Mapped[str] = mapped_column(Text)
+    content_kind: Mapped[str] = mapped_column(String(32), default="table_cell")
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
