@@ -21,7 +21,7 @@ from app.services.financial_parser import parse_document
 LOG = logging.getLogger("codal_archive")
 SEARCH_URL = settings.codal_base_url.rstrip("/") + "/api/search/v2/q"
 RAW = Path(os.getenv("RAW_DATA_DIR", settings.raw_data_dir)) / "codal"
-SYMBOLS = [x.strip() for x in os.getenv("CODAL_SYMBOLS", "ساروم").split(",") if x.strip()]
+SYMBOLS = [x.strip() for x in os.getenv("CODAL_SYMBOLS", "").split(",") if x.strip()]
 PAGE_SIZE = int(os.getenv("CODAL_PAGE_SIZE", "100"))
 INTERVAL = int(os.getenv("CODAL_POLL_INTERVAL_SECONDS", "3600"))
 
@@ -167,7 +167,7 @@ def save_file(client, url):
 
 
 def extract_content_items(path):
-    """Extract spreadsheet cells, PDF tables/text and OCR fallback; retain the original file."""
+    """Extract non-empty spreadsheet cells and text-layer PDF tables/text; OCR is deliberately disabled."""
     suffix = Path(path).suffix.lower()
     items = []
     if suffix in (".xlsx", ".xlsm"):
@@ -209,19 +209,7 @@ def extract_content_items(path):
                         for col_no, value in enumerate(row or [], start=1):
                             if value is not None and str(value).strip():
                                 items.append((f"page:{page_no}:table:{table_no}:r{row_no}:c{col_no}", "table_cell", str(value)[:12000]))
-                if not content.strip():
-                    try:
-                        import fitz, pytesseract, io
-                        from PIL import Image
-                        document = fitz.open(path)
-                        pix = document.load_page(page_no - 1).get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-                        image = Image.open(io.BytesIO(pix.tobytes("png")))
-                        ocr_text = pytesseract.image_to_string(image, lang="fas+eng", config="--psm 6")
-                        if ocr_text.strip():
-                            items.append((f"page:{page_no}:ocr", "ocr_text", ocr_text[:50000]))
-                        document.close()
-                    except Exception:
-                        LOG.exception("OCR fallback failed for %s page %s", path, page_no)
+                # OCR is intentionally not used: image-only pages remain unextracted rather than guessing financial values.
     elif suffix in (".html", ".htm"):
         from html.parser import HTMLParser
         class TextCollector(HTMLParser):
@@ -382,6 +370,19 @@ def sync_symbol(symbol, max_pages, backfill):
                 break
             time.sleep(3.0)
     return totals
+
+def configured_symbols():
+    if SYMBOLS:
+        return SYMBOLS
+    with Session(engine) as db:
+        tickers = set(db.scalars(select(models.Symbol.ticker)).all())
+        # Historical instruments are included so delisted/renamed companies can still be backfilled.
+        try:
+            tickers.update(db.scalars(select(models.SymbolHistory.ticker)).all())
+        except Exception:
+            pass
+    return sorted(tickers) or ["ساروم"]
+
 
 def main():
     parser = argparse.ArgumentParser()
