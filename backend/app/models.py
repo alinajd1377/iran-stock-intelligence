@@ -169,3 +169,41 @@ class CodalReportTable(Base):
     rows: Mapped[list] = mapped_column(JSON, default=list)
     row_count: Mapped[int] = mapped_column(Integer, default=0)
     column_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SymbolHistory(Base):
+    """Historical instrument identity; rows are never deleted when a ticker is delisted or renamed."""
+    __tablename__ = "symbol_history"
+    __table_args__ = (UniqueConstraint("ticker", "valid_from", "company_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(32), index=True)
+    company_name: Mapped[str] = mapped_column(String(255), index=True)
+    company_key: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    isin: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    market: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    instrument_type: Mapped[str] = mapped_column(String(32), default="stock")
+    status: Mapped[str] = mapped_column(String(32), default="unknown", index=True)
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(String(64), default="manual")
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class FxRateAudit(Base):
+    """Append-only audit trail for imported and manually corrected FX observations."""
+    __tablename__ = "fx_rate_audit"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rate_id: Mapped[int | None] = mapped_column(ForeignKey("daily_fx_rates.id", ondelete="SET NULL"), nullable=True, index=True)
+    rate_date: Mapped[date] = mapped_column(Date, index=True)
+    currency_pair: Mapped[str] = mapped_column(String(16), default="USD/IRR")
+    old_rate: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    new_rate: Mapped[Decimal] = mapped_column(Numeric(24, 4))
+    source: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(16), default="insert")
+    actor: Mapped[str] = mapped_column(String(128), default="system")
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
