@@ -179,23 +179,24 @@ def codal_report_cells(announcement_id: int, limit: int = Query(default=500, ge=
                        offset: int = Query(default=0, ge=0), q: str | None = Query(default=None, max_length=200),
                        db: Session = Depends(get_db)):
     if db.get(models.CodalAnnouncement, announcement_id) is None: raise HTTPException(404, "گزارش پیدا نشد")
-    base = select(models.DocumentContentItem, models.DocumentVersion).join(
+    doc_stmt = select(models.DocumentContentItem, models.DocumentVersion).join(
         models.DocumentVersion, models.DocumentContentItem.document_version_id == models.DocumentVersion.id
     ).where(models.DocumentVersion.announcement_id == announcement_id)
-    count = select(text("count(*)")).select_from(models.DocumentContentItem).join(
-        models.DocumentVersion, models.DocumentContentItem.document_version_id == models.DocumentVersion.id
-    ).where(models.DocumentVersion.announcement_id == announcement_id)
+    html_stmt = select(models.CodalReportCell).where(models.CodalReportCell.announcement_id == announcement_id)
     if q:
         pattern = f"%{q}%"
-        base = base.where(models.DocumentContentItem.content_text.ilike(pattern))
-        count = count.where(models.DocumentContentItem.content_text.ilike(pattern))
-    total = db.execute(count).scalar_one()
-    rows = db.execute(base.order_by(models.DocumentVersion.version_no, models.DocumentContentItem.id)
-                      .offset(offset).limit(limit)).all()
+        doc_stmt = doc_stmt.where(models.DocumentContentItem.content_text.ilike(pattern))
+        html_stmt = html_stmt.where(models.CodalReportCell.cell_text.ilike(pattern))
+    doc_rows = db.execute(doc_stmt.order_by(models.DocumentVersion.version_no, models.DocumentContentItem.id)).all()
+    html_rows = db.scalars(html_stmt.order_by(models.CodalReportCell.sheet_id, models.CodalReportCell.table_index, models.CodalReportCell.row_no, models.CodalReportCell.column_no)).all()
+    items = [{"locator": item.locator, "kind": item.content_kind, "text": item.content_text,
+              "file_name": version.file_name, "version_no": version.version_no} for item, version in doc_rows]
+    items.extend([{"locator": item.locator, "kind": item.content_kind, "text": item.cell_text,
+                   "file_name": "Codal Decision HTML", "version_no": None} for item in html_rows])
+    items.sort(key=lambda item: (item["locator"], item["file_name"] or ""))
+    total = len(items)
     return {"announcement_id": announcement_id, "total": total, "limit": limit, "offset": offset,
-            "items": [{"locator": item.locator, "kind": item.content_kind, "text": item.content_text,
-                       "file_name": version.file_name, "version_no": version.version_no}
-                      for item, version in rows]}
+            "items": items[offset:offset + limit]}
 
 @app.get("/api/v1/research/sarom")
 def sarom_research():
