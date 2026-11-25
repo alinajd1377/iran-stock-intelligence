@@ -13,3 +13,17 @@ class TsetmcClient:
             response = await client.get(url)
             response.raise_for_status()
             return response.json()
+
+    async def market_watch(self) -> dict:
+        """Fetch the current market-wide instrument universe from TSETMC."""
+        url = f"{self.base_url}/ClosingPrice/GetMarketWatch"
+        params = {"market": 0, "withBestLimits": "false", "hEven": 0, "RefID": 0}
+        params.update({f"paperTypes[{i}]": i + 1 for i in range(9)})
+        headers = {"User-Agent": "Mozilla/5.0 IranStockIntelligence/1.0", "Accept": "application/json"}
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Unexpected TSETMC market-watch response")
+        return payload
