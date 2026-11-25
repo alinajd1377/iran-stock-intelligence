@@ -51,29 +51,52 @@ def discover_sheets(html):
     return sorted(found)
 
 def parse_html_tables(html):
+    """Extract every HTML table, expanding rowspan/colspan while preserving empty positions."""
     from html.parser import HTMLParser
     class Tables(HTMLParser):
         def __init__(self):
-            super().__init__(); self.tables=[]; self.table=None; self.row=None; self.cell=None; self.caption=None; self.in_caption=False
+            super().__init__(); self.tables=[]; self.table=None; self.row=None; self.cell=None; self.pending={}
         def handle_starttag(self, tag, attrs):
-            if tag.lower()=="table": self.table={"caption":None,"rows":[]}; self.tables.append(self.table)
-            elif self.table is not None and tag.lower()=="tr": self.row=[]; self.table["rows"].append(self.row)
-            elif self.table is not None and tag.lower() in ("td","th"): self.cell=[]
-            elif self.table is not None and tag.lower()=="caption": self.in_caption=True; self.caption=[]
+            attrs=dict(attrs)
+            if tag.lower()=="table":
+                if self.table is None: self.table={"caption":None,"rows":[]}; self.tables.append(self.table); self.pending={}
+                else: self.table={"caption":None,"rows":[]}; self.tables.append(self.table)
+            elif self.table is not None and tag.lower()=="tr":
+                self.row=[]; self.table["rows"].append(self.row)
+            elif self.table is not None and tag.lower() in ("td","th"):
+                self.cell={"parts":[],"colspan":max(1,int(attrs.get("colspan",1) or 1)),"rowspan":max(1,int(attrs.get("rowspan",1) or 1))}
         def handle_endtag(self, tag):
             if tag.lower() in ("td","th") and self.cell is not None:
-                self.row.append(" ".join("".join(self.cell).split())); self.cell=None
-            elif tag.lower()=="caption" and self.in_caption:
-                self.table["caption"]=" ".join("".join(self.caption).split()); self.in_caption=False
-            elif tag.lower()=="table": self.table=None
+                self.row.append((" ".join("".join(self.cell["parts"]).split()),self.cell["colspan"],self.cell["rowspan"])); self.cell=None
+            elif tag.lower()=="table":
+                self.table=None
         def handle_data(self,data):
-            if self.cell is not None: self.cell.append(data)
-            if self.in_caption and self.caption is not None: self.caption.append(data)
+            if self.cell is not None: self.cell["parts"].append(data)
     parser=Tables(); parser.feed(html)
     output=[]
     for table in parser.tables:
-        rows=[r for r in table["rows"] if any(str(c).strip() for c in r)]
-        if rows: output.append({"caption":table["caption"],"headers":rows[0],"rows":rows[1:] if len(rows)>1 else [],"row_count":len(rows),"column_count":max(map(len,rows),default=0)})
+        grid=[]; spans={}
+        for rno, cells in enumerate(table["rows"]):
+            row=[]; cno=0
+            while cno in spans:
+                value,remaining=spans.pop(cno); row.append(value)
+                if remaining>1: spans[cno]=(value,remaining-1)
+                cno+=1
+            for value,colspan,rowspan in cells:
+                while cno in spans:
+                    v,remaining=spans.pop(cno); row.append(v)
+                    if remaining>1: spans[cno]=(v,remaining-1)
+                    cno+=1
+                for offset in range(colspan):
+                    row.append(value)
+                    if rowspan>1: spans[cno+offset]=(value,rowspan-1)
+                cno+=colspan
+            if row: grid.append(row)
+        width=max((len(r) for r in grid),default=0)
+        grid=[r+[""]*(width-len(r)) for r in grid]
+        grid=[r for r in grid if any(str(c).strip() for c in r)]
+        if grid:
+            output.append({"caption":None,"headers":grid[0],"rows":grid[1:],"row_count":len(grid),"column_count":width})
     return output
 
 def render_decision_page(url, timeout_ms=60000):
@@ -104,9 +127,14 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
         response=client.get(decision,params={"LetterSerial":serial,"rt":0,"let":letter_type,"ct":0,"ft":-1,"sheetId":1})
         response.raise_for_status()
         sheet_ids=discover_sheets(response.text)
-        if not sheet_ids:
-            # ZIP reference: LetterType 58 monthly page; LetterType 6 interim sheets 0, 1, 9.
-            sheet_ids = [0] if letter_type == 58 else ([0, 1, 9] if letter_type == 6 else [1])
+        # Codal interim statements are exposed on separate sheetId pages; the
+        # report-list page often advertises only the initially selected sheet.
+        if letter_type == 6:
+            sheet_ids = sorted(set(sheet_ids) | {0, 1, 9})
+        elif letter_type == 58:
+            sheet_ids = sorted(set(sheet_ids) | {0, 1})
+        elif not sheet_ids:
+            sheet_ids = [1]
         total["sheets_found"]=len(sheet_ids)
         for idx,sheet_id in enumerate(sheet_ids):
             url=f"{decision}?LetterSerial={serial}&rt=0&let={letter_type}&ct=0&ft=-1&sheetId={sheet_id}"
@@ -126,7 +154,7 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
                         page_content = rendered_html.encode("utf-8")
                 except Exception:
                     pass
-            if not tables and sheet_id in (0, 1):
+            if not tables:
                 workbook_url=f"{EXCEL_BASE}{serial}/0"
                 workbook=client.get(workbook_url)
                 if workbook.status_code == 200:
