@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from urllib.parse import parse_qs
+import base64, hashlib, hmac, time
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
@@ -27,7 +29,68 @@ async def lifespan(app: FastAPI):
             db.commit()
     yield
 
-app = FastAPI(title=settings.app_name, version="0.3.0", description="Iranian equity research platform", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.0", description="Iranian equity research platform", lifespan=lifespan)
+
+ADMIN_COOKIE = "isi_admin_session"
+LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+
+def _admin_session_token(username: str, expires_at: int) -> str:
+    payload = f"{username}:{expires_at}".encode()
+    signature = hmac.new(settings.admin_session_secret.encode(), payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(payload + b":" + signature).decode().rstrip("=")
+
+def _valid_admin_session(token: str | None) -> bool:
+    if not token or not settings.admin_username or not settings.admin_password or not settings.admin_session_secret: return False
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+        username, expiry, signature = raw.rsplit(b":", 1)
+        payload = username + b":" + expiry
+        expected = hmac.new(settings.admin_session_secret.encode(), payload, hashlib.sha256).digest()
+        return hmac.compare_digest(signature, expected) and hmac.compare_digest(username.decode(), settings.admin_username) and int(expiry) > int(time.time())
+    except (ValueError, UnicodeDecodeError): return False
+
+@app.middleware("http")
+async def protect_management_routes(request: Request, call_next):
+    path = request.url.path
+    is_login = path in {"/admin/login", "/admin/logout"}
+    protected = path == "/admin" or path.startswith("/api/v1/admin/") or request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    if protected and not is_login and not _valid_admin_session(request.cookies.get(ADMIN_COOKIE)):
+        if path.startswith("/api/") or path.startswith("/docs") or path.startswith("/openapi"): return JSONResponse({"detail": "احراز هویت مدیر لازم است"}, status_code=401)
+        return RedirectResponse("/admin/login", status_code=303)
+    if protected and request.method in {"POST", "PUT", "PATCH", "DELETE"} and not is_login:
+        origin = request.headers.get("origin")
+        if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"): return JSONResponse({"detail": "درخواست cross-origin مجاز نیست"}, status_code=403)
+    return await call_next(request)
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page():
+    if not settings.admin_username or not settings.admin_password or not settings.admin_session_secret:
+        return HTMLResponse("<h2>ورود مدیر پیکربندی نشده است</h2><p>ADMIN_USERNAME، ADMIN_PASSWORD و ADMIN_SESSION_SECRET را در .env تنظیم کنید.</p>", status_code=503)
+    return HTMLResponse("""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ورود مدیر</title><style>body{font-family:Tahoma;background:#f3f6fa;display:grid;place-items:center;min-height:100vh;margin:0}.box{background:white;padding:28px;border:1px solid #dce4ee;border-radius:14px;width:min(360px,88vw)}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border:1px solid #ccd7e4;border-radius:8px}button{background:#1769c2;color:white;border:0;cursor:pointer}</style><div class="box"><h2>ورود به پنل مدیریت</h2><form method="post"><label>نام کاربری</label><input name="username" autocomplete="username" required><label>گذرواژه</label><input name="password" type="password" autocomplete="current-password" required><button>ورود امن</button></form></div></html>""")
+
+@app.post("/admin/login")
+async def admin_login(request: Request):
+    if not settings.admin_username or not settings.admin_password or not settings.admin_session_secret: raise HTTPException(503, "تنظیمات ورود مدیر کامل نیست")
+    client = request.client.host if request.client else "unknown"
+    now = time.time()
+    attempts = [t for t in LOGIN_ATTEMPTS.get(client, []) if now - t < 900]
+    if len(attempts) >= 8: raise HTTPException(429, "تعداد تلاش ناموفق زیاد است؛ ۱۵ دقیقه بعد تلاش کنید")
+    form = parse_qs((await request.body()).decode("utf-8", "replace"))
+    username, password = form.get("username", [""])[0], form.get("password", [""])[0]
+    ok = hmac.compare_digest(username, settings.admin_username) and hmac.compare_digest(password, settings.admin_password)
+    if not ok:
+        attempts.append(now); LOGIN_ATTEMPTS[client] = attempts
+        raise HTTPException(401, "نام کاربری یا گذرواژه نادرست است")
+    LOGIN_ATTEMPTS.pop(client, None)
+    response = RedirectResponse("/admin", status_code=303)
+    response.set_cookie(ADMIN_COOKIE, _admin_session_token(username, int(now) + settings.admin_session_ttl_seconds), max_age=settings.admin_session_ttl_seconds, httponly=True, secure=settings.admin_cookie_secure, samesite="strict", path="/")
+    return response
+
+@app.post("/admin/logout")
+def admin_logout():
+    response = RedirectResponse("/admin/login", status_code=303)
+    response.delete_cookie(ADMIN_COOKIE, path="/", httponly=True, secure=settings.admin_cookie_secure, samesite="strict")
+    return response
 
 class MarketSnapshotIn(BaseModel):
     symbol_ticker: str
