@@ -173,12 +173,20 @@ def extract_content_items(path):
     if suffix in (".xlsx", ".xlsm"):
         from openpyxl import load_workbook
         book = load_workbook(path, read_only=True, data_only=True)
+        formulas = load_workbook(path, read_only=True, data_only=False)
+        formula_sheets = {sheet.title: sheet for sheet in formulas.worksheets}
         for sheet in book.worksheets:
+            formula_sheet = formula_sheets[sheet.title]
             for rno, row in enumerate(sheet.iter_rows(values_only=True), start=1):
                 for cno, value in enumerate(row, start=1):
+                    locator = f"{sheet.title}!R{rno}C{cno}"
                     if value is not None and str(value).strip():
-                        items.append((f"{sheet.title}!R{rno}C{cno}", "cell", str(value)[:12000]))
+                        items.append((locator, "cell", str(value)[:12000]))
+                    formula = formula_sheet.cell(row=rno, column=cno).value
+                    if isinstance(formula, str) and formula.startswith("="):
+                        items.append((locator + ":formula", "formula", formula[:12000]))
         book.close()
+        formulas.close()
     elif suffix == ".xls":
         import xlrd
         book = xlrd.open_workbook(path, on_demand=True)
