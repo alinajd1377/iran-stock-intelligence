@@ -612,3 +612,76 @@ async def sync_tgju_fx(db: Session = Depends(get_db)):
     return {"source":"tgju","rows_received":len(rows),"inserted":inserted,"updated":updated,
             "first_date":rows[0]["rate_date"],"last_date":rows[-1]["rate_date"],
             "unit":"IRR per USD","note":"تاریخ‌های بدون رکورد در منبع، حدس یا پر نمی‌شوند."}
+
+
+@app.post("/api/v1/admin/symbol-history/sync-tsetmc")
+async def sync_tsetmc_symbol_catalog(db: Session = Depends(get_db)):
+    """Import the current TSETMC market-watch universe; prior historical rows are never removed."""
+    try:
+        payload = await TsetmcClient().market_watch()
+    except Exception as exc:
+        raise HTTPException(502, f"دریافت فهرست نمادها از TSETMC ناموفق بود: {type(exc).__name__}: {exc}") from exc
+    rows = None
+    for key in ("marketwatch", "marketWatch", "MarketWatch", "data", "Data"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            rows = value
+            break
+        if isinstance(value, dict):
+            for nested_key in ("marketwatch", "marketWatch", "items", "Items"):
+                if isinstance(value.get(nested_key), list):
+                    rows = value[nested_key]
+                    break
+        if rows is not None:
+            break
+    if not rows:
+        raise HTTPException(502, "پاسخ TSETMC فهرست قابل تشخیص نمادها نداشت؛ هیچ داده‌ای ذخیره نشد.")
+    inserted = updated = 0
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        instrument = raw.get("instrument") or raw.get("Instrument") or raw.get("instrumentInfo") or raw
+        if not isinstance(instrument, dict):
+            continue
+        data = {str(k).lower(): v for k, v in instrument.items()}
+        ticker = data.get("lval18afc") or data.get("ticker") or data.get("symbol")
+        company_name = data.get("lval30") or data.get("name") or data.get("companyname")
+        ins_code = data.get("inscode") or data.get("inscode1") or data.get("instrumentcode")
+        isin = data.get("cisin") or data.get("isin")
+        if not ticker or not company_name:
+            continue
+        ticker, company_name = str(ticker).strip(), str(company_name).strip()
+        market = data.get("flowtitle") or data.get("market") or data.get("flow")
+        industry = data.get("cs") or data.get("industry") or data.get("sector")
+        existing = db.scalar(select(models.SymbolHistory).where(
+            models.SymbolHistory.ticker == ticker,
+            models.SymbolHistory.company_name == company_name,
+            models.SymbolHistory.valid_from.is_(None)))
+        if existing is None:
+            db.add(models.SymbolHistory(ticker=ticker, company_name=company_name,
+                company_key=str(ins_code) if ins_code else None, isin=str(isin) if isin else None,
+                market=str(market) if market is not None else None,
+                industry=str(industry) if industry is not None else None,
+                instrument_type="stock", status="active", source="tsetmc",
+                source_url="https://cdn.tsetmc.com/api/ClosingPrice/GetMarketWatch",
+                raw_payload=raw))
+            inserted += 1
+        else:
+            existing.company_key = str(ins_code) if ins_code else existing.company_key
+            existing.isin = str(isin) if isin else existing.isin
+            existing.market = str(market) if market is not None else existing.market
+            existing.industry = str(industry) if industry is not None else existing.industry
+            existing.status = "active"
+            existing.source = "tsetmc"
+            existing.raw_payload = raw
+            updated += 1
+        current = db.scalar(select(models.Symbol).where(models.Symbol.ticker == ticker))
+        if current is None:
+            db.add(models.Symbol(ticker=ticker, name=company_name, isin=str(isin) if isin else None))
+        else:
+            current.name = company_name
+            if isin:
+                current.isin = str(isin)
+    db.commit()
+    return {"source":"tsetmc","rows_received":len(rows),"inserted":inserted,"updated":updated,
+            "note":"این همگام‌سازی فهرست جاری بازار را می‌آورد؛ نمادهای تاریخی حذف‌شده باید از منبع تاریخی/فایل فهرست وارد شوند و هیچ سابقه‌ای پاک نمی‌شود."}
