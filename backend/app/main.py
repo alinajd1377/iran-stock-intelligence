@@ -516,7 +516,9 @@ def admin_symbols(db: Session = Depends(get_db)):
 @app.post("/api/v1/codal/reports/extract-batch/{symbol}")
 def extract_codal_report_batch(symbol: str, limit: int = Query(default=50, ge=1, le=200), only_missing: bool = True, db: Session = Depends(get_db)):
     from .services.codal_reports import extract_announcement
-    stmt=select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker==symbol).order_by(models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)
+    stmt=select(models.CodalAnnouncement).where(models.CodalAnnouncement.symbol_ticker==symbol)
+    stmt=stmt.where(models.CodalAnnouncement.report_type.in_(["ن-۱۰","ن-10","ن-۳۰","ن-30"]))
+    stmt=stmt.order_by(models.CodalAnnouncement.publish_at.desc().nullslast()).limit(limit)
     announcements=db.scalars(stmt).all(); results=[]
     for item in announcements:
         if only_missing and db.scalar(select(models.CodalReportSheet.id).where(models.CodalReportSheet.announcement_id==item.id).limit(1)):
