@@ -234,3 +234,31 @@ class DailyFxRateBar(Base):
     close: Mapped[Decimal] = mapped_column(Numeric(24, 4))
     jalali_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CodalCompanyProfile(Base):
+    """Issuer metadata sourced from Codal/TSETMC; nullable fields are never inferred."""
+    __tablename__ = "codal_company_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol_ticker: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fiscal_year_end: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    registered_capital: Mapped[Decimal | None] = mapped_column(Numeric(30, 4), nullable=True)
+    isin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="codal")
+    source_announcement_id: Mapped[int | None] = mapped_column(ForeignKey("codal_announcements.id", ondelete="SET NULL"), nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CodalCellValue(Base):
+    """Conservative numeric interpretation of a raw cell; raw text remains in codal_report_cells."""
+    __tablename__ = "codal_cell_values"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_cell_id: Mapped[int] = mapped_column(ForeignKey("codal_report_cells.id", ondelete="CASCADE"), unique=True, index=True)
+    row_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    column_header: Mapped[str | None] = mapped_column(Text, nullable=True)
+    numeric_value: Mapped[Decimal | None] = mapped_column(Numeric(30, 6), nullable=True)
+    parse_status: Mapped[str] = mapped_column(String(24), default="not_numeric")
+    unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
