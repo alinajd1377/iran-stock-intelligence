@@ -144,6 +144,8 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
             elif sheet.content_hash!=digest:
                 sheet.content_hash=digest; sheet.source_url=url; sheet.status="updated"
                 db.query(models.CodalReportTable).filter_by(sheet_record_id=sheet.id).delete(synchronize_session=False)
+            # Rebuild cell-level records for this sheet so removed or changed rows do not linger.
+            db.query(models.CodalReportCell).filter_by(announcement_id=announcement_id, sheet_id=sheet_id).delete(synchronize_session=False)
             for table_index, table in enumerate(tables, start=1):
                 existing=db.scalar(select(models.CodalReportTable).where(models.CodalReportTable.sheet_record_id==sheet.id,models.CodalReportTable.table_index==table_index))
                 if existing is None:
@@ -155,6 +157,15 @@ def extract_announcement(db, announcement_id, client=None, delay_seconds=3.0):
                     existing.rows=table["rows"]
                     existing.row_count=table["row_count"]
                     existing.column_count=table["column_count"]
+                all_rows = [table.get("headers") or []] + (table.get("rows") or [])
+                for row_no, row_values in enumerate(all_rows, start=1):
+                    for column_no, value in enumerate(row_values or [], start=1):
+                        if value is None or not str(value).strip():
+                            continue
+                        locator = f"Sheet{sheet_id}!Table{table_index}!R{row_no}C{column_no}"
+                        db.add(models.CodalReportCell(announcement_id=announcement_id, sheet_id=sheet_id,
+                            table_index=table_index, row_no=row_no, column_no=column_no,
+                            locator=locator, cell_text=str(value)[:12000], content_kind="table_cell"))
                 total["tables_saved"]+=1
                 total["rows_saved"]+=table["row_count"]
         db.commit()
